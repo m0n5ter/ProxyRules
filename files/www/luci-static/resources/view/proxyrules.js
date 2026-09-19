@@ -73,8 +73,13 @@ return view.extend({
 			const chains = Object.keys(s.chains || {});
 			if (chains.length) {
 				out.push(E('p', { style: 'margin-top:1em' }, E('strong', 'Цепочки (жирным — через что идёт трафик сейчас):')));
-				out.push(E('ul', {}, chains.map((key) => {
+				// Две колонки: имя (по ширине самого длинного) и участники
+				out.push(E('div', { style: 'display:grid;grid-template-columns:max-content 1fr;gap:.3em 1.5em;margin-left:1em' }, chains.flatMap((key) => {
 					const c = s.chains[key];
+					// У заданных прямо в правиле ключ вида "TR_DE_UK" — в именах «_» запрещён
+					const name = key.includes('_')
+						? E('em', { style: 'opacity:.7' }, 'в правиле')
+						: E('strong', {}, key);
 					const parts = [];
 					c.members.forEach((m, i) => {
 						if (i) parts.push(' → ');
@@ -82,7 +87,7 @@ return view.extend({
 					});
 					if (c.active && c.active.endsWith('~auto'))
 						parts.push(E('em', { style: 'color:#d33' }, '  — все недоступны, sing-box ищет живое сам'));
-					return E('li', {}, parts);
+					return [E('div', {}, name), E('div', {}, parts)];
 				})));
 			}
 
@@ -90,7 +95,7 @@ return view.extend({
 			if (lists.length) {
 				const failed = lists.filter((l) => s.lists[l].error);
 				const oldest = Math.min(...lists.map((l) => s.lists[l].updated || 0));
-				out.push(E('p', {}, [
+				out.push(E('p', { style: 'margin-top:1em' }, [
 					`Списков: ${lists.length}, самый старый обновлён ${ago(oldest)} назад.`,
 					failed.length ? E('span', { style: 'color:#d33' }, ` Не обновились: ${failed.join(', ')}.`) : '',
 				]));

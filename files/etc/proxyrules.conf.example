@@ -19,6 +19,12 @@
 #
 #    domain:upwork.com         домен и все его поддомены
 #    list:discord              список itdoginfo/allow-domains (домены + подсети)
+#                              есть: anime block cloudflare cloudfront digitalocean discord
+#                              geoblock google_ai google_meet google_play hdrezka hetzner
+#                              hodca meta news ovh porn roblox russia_inside russia_outside
+#                              telegram tiktok twitter ukraine_inside youtube
+#                              (актуальный набор — файлы *.srs в последнем релизе:
+#                              github.com/itdoginfo/allow-domains/releases/latest)
 #    ip:203.0.113.0/24         адрес или подсеть назначения
 #    src:192.168.1.15          устройство (или подсеть) в локальной сети — весь его трафик
 #    port:443, 50000-65535     порт назначения (TCP и UDP)
@@ -59,6 +65,10 @@ NO-TR    = DE,UK
 TR-FIRST = TR,DE,UK        # как было в Legacy (Турция первой) + DE
 
 # ── Правила ─────────────────────────────────────────────────────────────────
+
+# Мои VPS и внешний IP роутера — всегда напрямую, с любого устройства.
+# Стоит первым, чтобы src: и list:hetzner/ovh/… ниже его не перехватили.
+ip:203.0.113.30, 203.0.113.10, 203.0.113.40, 198.51.100.1   -> direct
 
 # Upwork — только Турция, с любого устройства. Стоит выше src:, поэтому
 # с Monster-PC тоже только Турция: если TR лежит, Upwork не открывается.

@@ -426,11 +426,29 @@ for (let r in merged) push(route_rules, route_rule(r));
 //   иначе src/ip/port -> одно nft-правило со всеми этими условиями сразу.
 // DNS не знает, какое устройство спрашивает, поэтому fake-ip домен получает
 // для всех; кому правило не подходит, пойдут дальше по правилам или напрямую.
+//
+// Исключение для direct: если оно стоит выше перехватывающего правила
+// (ip:<внешний IP> -> direct над src:<устройство> -> TR), трафик иначе уйдёт в
+// sing-box по src: и тот сам пойдёт «напрямую» — а соединение самого роутера
+// на свой WAN-адрес проброс портов не проходит. Поэтому direct из одних
+// src/ip/port без «!» становится nft-правилом return на своём месте по порядку.
+// После первого list: так не делаем: его подсети проверяются в pr_lists, ниже
+// всех этих правил, и return мог бы перебить правило, стоящее выше direct.
 let fake_suffix = [], fake_sets = [];
-let nft_matches = [];     // [{ src, dst, ports }] для правил без domain/list
+let nft_matches = [];     // [{ src, dst, ports, direct }] для правил без domain/list
+let seen_list = false;
 
 for (let r in merged) {
-	if (r.target == 'direct') continue;
+	if (r.target == 'direct') {
+		let exact = !seen_list && length(r.conds) &&
+			!length(filter(r.conds, (c) => c.neg || c.type == 'domain' || c.type == 'list'));
+		if (exact) {
+			let by = {};
+			for (let c in r.conds) by[c.type] = c.values;
+			push(nft_matches, { src: by.src, dst: by.ip, ports: by.port, direct: true });
+		}
+		continue;
+	}
 	let pos = filter(r.conds, (c) => !c.neg);
 	let by = {};
 	for (let c in pos) by[c.type] = c.values;
@@ -438,6 +456,7 @@ for (let r in merged) {
 	if (by.domain || by.list) {
 		if (by.domain) fake_suffix = [ ...fake_suffix, ...by.domain ];
 		for (let v in by.list ?? []) push(fake_sets, 'list-' + v);
+		if (by.list) seen_list = true;
 	}
 	else
 		push(nft_matches, { src: by.src, dst: by.ip, ports: by.port });
@@ -513,7 +532,7 @@ for (let i, mt in nft_matches) {
 	if (mt.dst) { sets += nft_set(`pr_m${i}_dst`, 'ipv4_addr', uniq(mt.dst)); match_expr += `ip daddr @pr_m${i}_dst `; }
 	match_expr += L4;
 	if (mt.ports) { sets += nft_set(`pr_m${i}_port`, 'inet_service', uniq(mt.ports)); match_expr += ` th dport @pr_m${i}_port`; }
-	let rule = `\t\t${match_expr} meta mark set ${MARK} return\n`;
+	let rule = mt.direct ? `\t\t${match_expr} return\n` : `\t\t${match_expr} meta mark set ${MARK} return\n`;
 	pre_rules += rule;
 	if (!mt.src) out_rules += rule;    // у трафика самого роутера нет «устройства»
 }
