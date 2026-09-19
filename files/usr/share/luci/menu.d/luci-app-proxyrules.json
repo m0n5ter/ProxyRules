@@ -1,0 +1,13 @@
+{
+	"admin/services/proxyrules": {
+		"title": "Proxy Rules",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "proxyrules"
+		},
+		"depends": {
+			"acl": [ "luci-app-proxyrules" ]
+		}
+	}
+}

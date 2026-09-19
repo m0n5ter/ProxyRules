@@ -1,0 +1,111 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  proxyrules — какой трафик через какое соединение
+#
+#  СОЕДИНЕНИЯ           ИМЯ = vless://…            (ссылка целиком, как выдал сервер)
+#                       ИМЯ = iface:awg0           (интерфейс OpenWrt: AmneziaWG, WireGuard…)
+#
+#  ЦЕПОЧКИ              ИМЯ = DE,UK,TR             первое живое соединение по порядку;
+#                                                  когда более приоритетное оживает —
+#                                                  возврат на него
+#                       ИМЯ = TR,direct            если TR лежит — напрямую
+#                       в цепочке только соединения и direct (цепочки не вкладываются)
+#
+#                       имена: латиница, цифры, «-»; direct и block зарезервированы
+#
+#  ПРАВИЛА              условие [& условие…] -> ЦЕЛЬ
+#                       проверяются СВЕРХУ ВНИЗ, срабатывает первое подходящее
+#
+#  УСЛОВИЯ              тип:значение[, значение…]      (запятая — «или»)
+#
+#    domain:upwork.com         домен и все его поддомены
+#    list:discord              список itdoginfo/allow-domains (домены + подсети)
+#    ip:203.0.113.0/24         адрес или подсеть назначения
+#    src:192.168.1.15          устройство (или подсеть) в локальной сети — весь его трафик
+#    port:443, 50000-65535     порт назначения (TCP и UDP)
+#
+#    &   — «и»:  src:192.168.1.15 & domain:aaa.com -> DE       только aaa.com с этого устройства
+#    !   — «не»: !src:192.168.1.15 & domain:bbb.com -> block   всем, кроме этого устройства
+#    хотя бы одно условие должно быть без «!» (кроме правил с целью direct)
+#
+#  ЦЕЛИ                 AUTO                цепочка
+#                       UK                  одно соединение, без запасного
+#                       direct              напрямую, без прокси
+#                       block               заблокировать
+#                       (можно и прямо в правиле: -> TR,DE — это безымянная цепочка)
+#
+#  Всё, что не попало ни в одно правило, идёт напрямую.
+#  Комментарий — «#» в начале строки или после пробела.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Настройки (можно не трогать) ────────────────────────────────────────────
+@interfaces     = br-lan WG0        # откуда перехватывать трафик
+@dns            = 8.8.8.8           # DoH-сервер
+@bootstrap      = 77.88.8.8
+@check_url      = https://www.gstatic.com/generate_204
+@check_interval = 10                # секунд между проверками соединений
+@lists_via      = NO-TR             # через что скачивать списки list:
+@log            = warn
+
+# ── Соединения ──────────────────────────────────────────────────────────────
+TR  = vless://UUID@203.0.113.30:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=google.com&fp=chrome&flow=xtls-rprx-vision#TR
+DE  = vless://UUID@203.0.113.10:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=www.amd.com&fp=chrome&flow=xtls-rprx-vision#DE
+UK  = vless://UUID@203.0.113.40:19252?type=tcp&security=reality&pbk=KEY&sid=SID&sni=google.com&fp=chrome&flow=xtls-rprx-vision#UK
+# AWG = iface:awg0
+
+# ── Цепочки ─────────────────────────────────────────────────────────────────
+TR-ONLY  = TR
+AUTO     = DE,UK,TR
+NO-TR    = DE,UK
+TR-FIRST = TR,DE,UK        # как было в Legacy (Турция первой) + DE
+
+# ── Правила ─────────────────────────────────────────────────────────────────
+
+# Upwork — только Турция, с любого устройства. Стоит выше src:, поэтому
+# с Monster-PC тоже только Турция: если TR лежит, Upwork не открывается.
+domain:upwork.com, static-upwork.com                        -> TR-ONLY
+
+# Устройства целиком
+src:192.168.1.15                                            -> TR-FIRST   # Monster-PC
+src:192.168.1.18                                            -> TR-FIRST   # Xbox
+src:192.168.1.42                                            -> AUTO       # Xubuntu
+src:192.168.1.101                                           -> AUTO
+
+# Турецкие и прочие сервисы
+domain:ajet.com, denizbank.com, humblebundle.com, localizecdn.com   -> TR-FIRST
+domain:mouseacceleration.com, meet.google.com, paddle.com           -> TR-FIRST
+domain:payoneer.com, profitwell.com, qualtrics.com, toptal.com      -> TR-FIRST
+domain:steamgames.com, steampowered.com, steamcontent.com           -> TR-FIRST
+domain:openwrt.org, xbox.com                                        -> TR-FIRST
+
+# Зарубежные сервисы и заблокированное (раньше — секция UK Legacy)
+domain:ai.google, aistudio.google.com, gemini.google.com, labs.google       -> AUTO
+domain:makersuite.google.com, ml.google.com, deepmind.google, cloud.google.com -> AUTO
+domain:anthropic.com, claude.ai, claude.com, claudeusercontent.com          -> AUTO
+domain:openai.com, chatgpt.com, oaiusercontent.com, grok.com, deepl.com     -> AUTO
+domain:github.com, githubusercontent.com, githubcopilot.com, jetbrains.com  -> AUTO
+domain:bankofamerica.com, bac-assets.com, paypal.com, stripe.com, fastspring.com -> AUTO
+domain:cex.io, bestchange.ru, ninjatrader.com                               -> AUTO
+domain:discord.com, discord.co, discord.dev, discord.gg, discord.gift       -> AUTO
+domain:discord.media, discord.new, discord.app.com, discordapp.com          -> AUTO
+domain:discordapp.net, discordcdn.com, discordstatus.com, dis.gd            -> AUTO
+domain:facebook.com, fbcdn.net, instagram.com, cdninstagram.com             -> AUTO
+domain:twitter.com, x.com, twimg.com, telegram.org, whatsapp.net            -> AUTO
+domain:linkedin.com, licdn.com, indeed.com, glassdoor.com, monster.com      -> AUTO
+domain:hackerrank.com, hrcdn.net, medium.com, quora.com, trustpilot.com     -> AUTO
+domain:intercom.io, intercom.help, intercomcdn.com, custhelp.com            -> AUTO
+domain:bbc.com, bbc.co.uk, bbci.co.uk, dw.com, foxnews.com, express.co.uk   -> AUTO
+domain:theeconomist.com, makeuseof.com, nationalintel.com                   -> AUTO
+domain:spotify.com, chess.com, modrinth.com, idiod.video, img9-no-fun.xyz   -> AUTO
+domain:brawlstars.com, brawlstarsgame.com, supercell.com, supercellid.com   -> AUTO
+domain:supercellstore.com, supercellgames.com                               -> AUTO
+domain:rutracker.org, rutor.info, ntc.party, qbittorrent.org    -> AUTO
+domain:live.com, oracle.com, intel.com, logitech.com, seagate.com, canon.com -> AUTO
+domain:dlink.com, st.com, cpuid.com, ultimaker.com, virtualbox.org          -> AUTO
+domain:notepad-plus-plus.org, rustdesk.com, wiresock.net, obfuscar.com      -> AUTO
+domain:avaloniaui.net, providersoftllc.com, pathcam.com, seeurlpcl.com      -> AUTO
+domain:browser-intake-datadoghq.com, o315582.ingest.sentry.io, studio.bot   -> AUTO
+domain:costco.com, walmart.com, ticketmaster.com, crunchlabs.com            -> AUTO
+domain:myunidays.com, bu.edu, uchealth.org, dot.gov, transportation.gov     -> AUTO
+
+list:news, meta, discord, twitter, cloudflare, hdrezka, tiktok              -> AUTO
+list:digitalocean, ovh, telegram, google_ai, youtube, hetzner, cloudfront   -> AUTO
