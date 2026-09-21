@@ -70,11 +70,11 @@ dns_off() {
 
 start_service() {
 	if [ ! -f "$CONF" ]; then
-		log "нет $CONF"
+		log "$CONF not found"
 		return 1
 	fi
 	if nft list table inet LegacyTable >/dev/null 2>&1; then
-		log "не запущен: работает Legacy (service legacy stop; service legacy disable)"
+		log "not started: Legacy is running (service legacy stop; service legacy disable)"
 		return 1
 	fi
 
@@ -82,18 +82,18 @@ start_service() {
 	chmod 700 "$RUN" /etc/proxyrules
 
 	if ! ucode "$LIB/gen.uc" "$CONF" "$RUN" >/dev/null 2>"$RUN/error"; then
-		log "ошибка в $CONF: $(cat "$RUN/error")"
+		log "error in $CONF: $(cat "$RUN/error")"
 		return 1
 	fi
 	if ! sing-box check -c "$RUN/config.json" 2>"$RUN/error"; then
-		log "sing-box отверг конфигурацию: $(cat "$RUN/error")"
+		log "sing-box rejected the config: $(cat "$RUN/error")"
 		return 1
 	fi
 	rm -f "$RUN/error"
 
 	load_env
 	if ! net_up; then
-		log "не удалось настроить nftables/маршрутизацию"
+		log "failed to set up nftables/routing"
 		net_down
 		return 1
 	fi

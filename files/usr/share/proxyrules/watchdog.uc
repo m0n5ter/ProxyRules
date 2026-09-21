@@ -92,7 +92,7 @@ function update_nodes(alive) {
 		if (!ok && was !== false && (was === null || n.fail >= FAIL_AFTER)) n.up = false;
 		if (was !== n.up) {
 			n.since = time();
-			if (was !== null) log(`${name}: ${n.up ? 'снова работает' : 'не отвечает'}`);
+			if (was !== null) log(`${name}: ${n.up ? 'up again' : 'not responding'}`);
 		}
 	}
 }
@@ -208,7 +208,7 @@ function rebuild_nft() {
 	put(`${RUN}/lists.nft`, nft);
 	// в пробном прогоне таблицы нет — проверяем вместе с её описанием
 	let r = sh(DRY ? `cat ${RUN}/nft.conf ${RUN}/lists.nft | nft -c -f - 2>&1` : `nft -f ${RUN}/lists.nft 2>&1`);
-	if (r.rc != 0) log(`nft: не удалось применить подсети списков: ${trim(r.out)}`);
+	if (r.rc != 0) log(`nft: failed to apply list subnets: ${trim(r.out)}`);
 	return n;
 }
 
@@ -234,7 +234,7 @@ function update_lists() {
 		let parsed = null;
 		try { parsed = json(data); } catch (e) { }
 		if (type(parsed?.rules) != 'array') {
-			log(`список ${name}: не удалось скачать (${trim(r.out) || 'пустой ответ'}), остаётся прежний`);
+			log(`list ${name}: download failed (${trim(r.out) || 'empty response'}), keeping the previous one`);
 			list_info[name] = { updated: s?.mtime, error: true };
 			continue;
 		}

@@ -32,7 +32,7 @@ function running() {
 // Каталог удаляется сразу — в нём секреты.
 function check(content) {
 	if (type(content) != 'string' || trim(content) == '')
-		return { ok: false, errors: 'файл пуст' };
+		return { ok: false, errors: 'file is empty' };
 
 	system([ 'rm', '-rf', CHECK_DIR ]);
 	mkdir(CHECK_DIR, 0o700);
@@ -71,11 +71,11 @@ const methods = {
 			let r = check(content);
 			if (!r.ok) return r;
 			if (!write_private(CONF, content))
-				return { ok: false, errors: `не удалось записать ${CONF}` };
+				return { ok: false, errors: `failed to write ${CONF}` };
 			if (running()) {
 				let s = sh(`${INIT} restart`);
 				if (!running())
-					return { ok: false, errors: 'сохранено, но сервис не поднялся: ' + (s.out || 'см. logread -e proxyrules') };
+					return { ok: false, errors: 'saved, but the service did not come up: ' + (s.out || 'see logread -e proxyrules') };
 				r.restarted = true;
 			}
 			return r;
@@ -89,7 +89,7 @@ const methods = {
 			if (a == 'start') { sh(`${INIT} enable`); s = sh(`${INIT} start`); }
 			else if (a == 'stop') { sh(`${INIT} disable`); s = sh(`${INIT} stop`); }
 			else if (a == 'restart') s = sh(`${INIT} restart`);
-			else return { ok: false, errors: 'неизвестное действие' };
+			else return { ok: false, errors: 'unknown action' };
 			let up = running();
 			return { ok: a == 'stop' ? !up : up, errors: s.out };
 		}

@@ -1,6 +1,6 @@
 {
 	"luci-app-proxyrules": {
-		"description": "Proxy Rules: правила маршрутизации через sing-box",
+		"description": "Proxy Rules: routing rules via sing-box",
 		"read": {
 			"ubus": {
 				"proxyrules": [ "get", "check", "status" ]

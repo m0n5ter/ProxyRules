@@ -1,93 +1,93 @@
 # ═══════════════════════════════════════════════════════════════════════════
-#  proxyrules — какой трафик через какое соединение
+#  proxyrules — which traffic goes through which connection
 #
-#  СОЕДИНЕНИЯ           ИМЯ = vless://…            (ссылка целиком, как выдал сервер)
-#                       ИМЯ = iface:awg0           (интерфейс OpenWrt: AmneziaWG, WireGuard…)
+#  CONNECTIONS          NAME = vless://…           (the whole link, as the server gave it)
+#                       NAME = iface:awg0          (OpenWrt interface: AmneziaWG, WireGuard…)
 #
-#  ЦЕПОЧКИ              ИМЯ = DE,UK,TR             первое живое соединение по порядку;
-#                                                  когда более приоритетное оживает —
-#                                                  возврат на него
-#                       ИМЯ = TR,direct            если TR лежит — напрямую
-#                       в цепочке только соединения и direct (цепочки не вкладываются)
+#  CHAINS               NAME = DE,UK,TR            first live connection in order;
+#                                                  when a higher-priority one comes back —
+#                                                  switch back to it
+#                       NAME = TR,direct           if TR is down — go direct
+#                       a chain holds only connections and direct (chains don't nest)
 #
-#                       имена: латиница, цифры, «-»; direct и block зарезервированы
+#                       names: Latin letters, digits, "-"; direct and block are reserved
 #
-#  ПРАВИЛА              условие [& условие…] -> ЦЕЛЬ
-#                       проверяются СВЕРХУ ВНИЗ, срабатывает первое подходящее
+#  RULES                condition [& condition…] -> TARGET
+#                       checked TOP TO BOTTOM, the first match wins
 #
-#  УСЛОВИЯ              тип:значение[, значение…]      (запятая — «или»)
+#  CONDITIONS           type:value[, value…]           (comma means "or")
 #
-#    domain:upwork.com         домен и все его поддомены
-#    list:discord              список itdoginfo/allow-domains (домены + подсети)
-#                              есть: anime block cloudflare cloudfront digitalocean discord
+#    domain:upwork.com         the domain and all its subdomains
+#    list:discord              itdoginfo/allow-domains list (domains + subnets)
+#                              available: anime block cloudflare cloudfront digitalocean discord
 #                              geoblock google_ai google_meet google_play hdrezka hetzner
 #                              hodca meta news ovh porn roblox russia_inside russia_outside
 #                              telegram tiktok twitter ukraine_inside youtube
-#                              (актуальный набор — файлы *.srs в последнем релизе:
+#                              (current set — the *.srs files in the latest release:
 #                              github.com/itdoginfo/allow-domains/releases/latest)
-#    ip:203.0.113.0/24         адрес или подсеть назначения
-#    src:192.168.1.15          устройство (или подсеть) в локальной сети — весь его трафик
-#    port:443, 50000-65535     порт назначения (TCP и UDP)
+#    ip:203.0.113.0/24         destination address or subnet
+#    src:192.168.1.15          LAN device (or subnet) — all of its traffic
+#    port:443, 50000-65535     destination port (TCP and UDP)
 #
-#    &   — «и»:  src:192.168.1.15 & domain:aaa.com -> DE       только aaa.com с этого устройства
-#    !   — «не»: !src:192.168.1.15 & domain:bbb.com -> block   всем, кроме этого устройства
-#    хотя бы одно условие должно быть без «!» (кроме правил с целью direct)
+#    &   — "and": src:192.168.1.15 & domain:aaa.com -> DE       only aaa.com from this device
+#    !   — "not": !src:192.168.1.15 & domain:bbb.com -> block   everyone except this device
+#    at least one condition must be without "!" (except rules with target direct)
 #
-#  ЦЕЛИ                 AUTO                цепочка
-#                       UK                  одно соединение, без запасного
-#                       direct              напрямую, без прокси
-#                       block               заблокировать
-#                       (можно и прямо в правиле: -> TR,DE — это безымянная цепочка)
+#  TARGETS              AUTO                a chain
+#                       UK                  a single connection, no fallback
+#                       direct              direct, no proxy
+#                       block               block
+#                       (also inline in a rule: -> TR,DE — an unnamed chain)
 #
-#  Всё, что не попало ни в одно правило, идёт напрямую.
-#  Комментарий — «#» в начале строки или после пробела.
+#  Anything not matched by any rule goes direct.
+#  Comment — "#" at the start of a line or after a space.
 # ═══════════════════════════════════════════════════════════════════════════
 
-# ── Настройки (можно не трогать) ────────────────────────────────────────────
-@interfaces     = br-lan WG0        # откуда перехватывать трафик
-@dns            = 8.8.8.8           # DoH-сервер
+# ── Settings (fine to leave as is) ──────────────────────────────────────────
+@interfaces     = br-lan WG0        # where to intercept traffic from
+@dns            = 8.8.8.8           # DoH server
 @bootstrap      = 77.88.8.8
 @check_url      = https://www.gstatic.com/generate_204
-@check_interval = 10                # секунд между проверками соединений
-@lists_via      = NO-TR             # через что скачивать списки list:
+@check_interval = 10                # seconds between connection checks
+@lists_via      = NO-TR             # what to download list: lists through
 @log            = warn
 
-# ── Соединения ──────────────────────────────────────────────────────────────
+# ── Connections ─────────────────────────────────────────────────────────────
 TR  = vless://UUID@203.0.113.30:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=google.com&fp=chrome&flow=xtls-rprx-vision#TR
 DE  = vless://UUID@203.0.113.10:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=www.amd.com&fp=chrome&flow=xtls-rprx-vision#DE
 UK  = vless://UUID@203.0.113.40:19252?type=tcp&security=reality&pbk=KEY&sid=SID&sni=google.com&fp=chrome&flow=xtls-rprx-vision#UK
 # AWG = iface:awg0
 
-# ── Цепочки ─────────────────────────────────────────────────────────────────
+# ── Chains ──────────────────────────────────────────────────────────────────
 TR-ONLY  = TR
 AUTO     = DE,UK,TR
 NO-TR    = DE,UK
-TR-FIRST = TR,DE,UK        # как было в Legacy (Турция первой) + DE
+TR-FIRST = TR,DE,UK        # as it was in Legacy (Turkey first) + DE
 
-# ── Правила ─────────────────────────────────────────────────────────────────
+# ── Rules ───────────────────────────────────────────────────────────────────
 
-# Мои VPS и внешний IP роутера — всегда напрямую, с любого устройства.
-# Стоит первым, чтобы src: и list:hetzner/ovh/… ниже его не перехватили.
+# My VPSes and the router's public IP — always direct, from any device.
+# Comes first so that src: and list:hetzner/ovh/… below don't catch it.
 ip:203.0.113.30, 203.0.113.10, 203.0.113.40, 198.51.100.1   -> direct
 
-# Upwork — только Турция, с любого устройства. Стоит выше src:, поэтому
-# с Monster-PC тоже только Турция: если TR лежит, Upwork не открывается.
+# Upwork — Turkey only, from any device. It is above src:, so Monster-PC
+# gets Turkey only too: if TR is down, Upwork doesn't open.
 domain:upwork.com, static-upwork.com                        -> TR-ONLY
 
-# Устройства целиком
+# Whole devices
 src:192.168.1.15                                            -> TR-FIRST   # Monster-PC
 src:192.168.1.18                                            -> TR-FIRST   # Xbox
 src:192.168.1.42                                            -> AUTO       # Xubuntu
 src:192.168.1.101                                           -> AUTO
 
-# Турецкие и прочие сервисы
+# Turkish and other services
 domain:ajet.com, denizbank.com, humblebundle.com, localizecdn.com   -> TR-FIRST
 domain:mouseacceleration.com, meet.google.com, paddle.com           -> TR-FIRST
 domain:payoneer.com, profitwell.com, qualtrics.com, toptal.com      -> TR-FIRST
 domain:steamgames.com, steampowered.com, steamcontent.com           -> TR-FIRST
 domain:openwrt.org, xbox.com                                        -> TR-FIRST
 
-# Зарубежные сервисы и заблокированное (раньше — секция UK Legacy)
+# Foreign and blocked services (formerly the Legacy UK section)
 domain:ai.google, aistudio.google.com, gemini.google.com, labs.google       -> AUTO
 domain:makersuite.google.com, ml.google.com, deepmind.google, cloud.google.com -> AUTO
 domain:anthropic.com, claude.ai, claude.com, claudeusercontent.com          -> AUTO

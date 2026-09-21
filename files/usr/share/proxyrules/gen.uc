@@ -67,7 +67,7 @@ function is_domain(s) {
 
 function parse_vless(url, name, ln) {
 	let m = match(url, /^vless:\/\/([^@]+)@([^:/?#]+):([0-9]+)\/?(\?[^#]*)?(#.*)?$/);
-	if (!m) return fail(ln, 'не удалось разобрать vless-ссылку');
+	if (!m) return fail(ln, 'cannot parse the vless link');
 
 	let q = {};
 	for (let kv in split(substr(m[4] ?? '?', 1), '&')) {
@@ -84,13 +84,13 @@ function parse_vless(url, name, ln) {
 		uuid: urldecode(m[1]),
 	};
 	if (!match(ob.uuid, /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/))
-		fail(ln, 'UUID в vless-ссылке имеет неверный формат');
+		fail(ln, 'invalid UUID in the vless link');
 	if (q.flow) ob.flow = q.flow;
 
 	// VLESS Encryption (Xray 25.8+: encryption=mlkem768x25519plus…) sing-box не умеет
 	if (q.encryption && q.encryption != 'none')
-		fail(ln, 'sing-box не поддерживает VLESS Encryption (encryption=' + substr(q.encryption, 0, 20) +
-			'…) — в x-ui поставьте у инбаунда Decryption: none и возьмите новую ссылку');
+		fail(ln, 'sing-box does not support VLESS Encryption (encryption=' + substr(q.encryption, 0, 20) +
+			'…) — in x-ui set the inbound Decryption to none and take a new link');
 	// pqv (ML-DSA-65 для REALITY) — необязательная проверка подписи; sing-box её не делает,
 	// соединение работает и без неё, поэтому параметр просто пропускаем
 
@@ -101,15 +101,15 @@ function parse_vless(url, name, ln) {
 		if (q.alpn) ob.tls.alpn = split(q.alpn, ',');
 		if (q.allowInsecure == '1' || q.insecure == '1') ob.tls.insecure = true;
 		if (sec == 'reality') {
-			if (!q.pbk) fail(ln, 'security=reality, но нет pbk');
-			if (!q.sni) fail(ln, 'security=reality, но нет sni — задайте SNI в настройках Reality инбаунда');
+			if (!q.pbk) fail(ln, 'security=reality, but pbk is missing');
+			if (!q.sni) fail(ln, 'security=reality, but sni is missing — set SNI in the inbound Reality settings');
 			ob.tls.reality = { enabled: true, public_key: q.pbk, short_id: q.sid ?? '' };
 			// reality в sing-box работает только с uTLS
 			ob.tls.utls ??= { enabled: true, fingerprint: 'chrome' };
 		}
 	}
 	else if (sec != 'none')
-		fail(ln, `неподдерживаемый security=${sec}`);
+		fail(ln, `unsupported security=${sec}`);
 
 	let t = q.type ?? 'tcp';
 	if (t == 'ws') {
@@ -127,15 +127,15 @@ function parse_vless(url, name, ln) {
 		if (q.host) ob.transport.host = split(q.host, ',');
 	}
 	else if (t != 'tcp' && t != 'raw')
-		fail(ln, `неподдерживаемый транспорт type=${t}`);
+		fail(ln, `unsupported transport type=${t}`);
 
 	return ob;
 }
 
 function parse_connection(name, value, ln) {
-	if (RESERVED[name]) return fail(ln, `имя «${name}» зарезервировано`);
+	if (RESERVED[name]) return fail(ln, `name "${name}" is reserved`);
 	if (!match(name, /^[A-Za-z0-9-]{1,32}$/))
-		return fail(ln, `имя соединения «${name}»: только латиница, цифры и «-»`);
+		return fail(ln, `connection name "${name}": only Latin letters, digits and "-"`);
 
 	if (match(value, /^vless:\/\//))
 		return parse_vless(value, name, ln);
@@ -144,7 +144,7 @@ function parse_connection(name, value, ln) {
 	if (m)
 		return { type: 'direct', tag: name, bind_interface: m[1] };
 
-	return fail(ln, 'соединение должно быть vless://… или iface:<интерфейс>');
+	return fail(ln, 'a connection must be vless://… or iface:<interface>');
 }
 
 // ---------------------------------------------------------------- разбор файла
@@ -165,7 +165,7 @@ let rules = [];
 
 let text = readfile(conf_path);
 if (text == null) {
-	warn(`не удалось прочитать ${conf_path}\n`);
+	warn(`cannot read ${conf_path}\n`);
 	exit(1);
 }
 
@@ -178,15 +178,15 @@ for (let raw in split(text, '\n')) {
 
 	let m = match(line, /^@([a-z_]+)\s*=\s*(.*)$/);
 	if (m) {
-		if (!exists(settings, m[1])) fail(ln, `неизвестная настройка @${m[1]}`);
+		if (!exists(settings, m[1])) fail(ln, `unknown setting @${m[1]}`);
 		else { settings[m[1]] = m[2]; settings_ln[m[1]] = ln; }
 		continue;
 	}
 
 	m = match(line, /^([A-Za-z0-9_-]+)\s*=\s*(.+)$/);
 	if (m && match(m[2], /^(vless:\/\/|iface:)/)) {
-		if (connections[m[1]]) { fail(ln, `соединение ${m[1]} уже задано`); continue; }
-		if (match(m[2], /\s/)) { fail(ln, 'в ссылке соединения не должно быть пробелов'); continue; }
+		if (connections[m[1]]) { fail(ln, `connection ${m[1]} is already defined`); continue; }
+		if (match(m[2], /\s/)) { fail(ln, 'a connection link must not contain spaces'); continue; }
 		let ob = parse_connection(m[1], m[2], ln);
 		if (ob) { connections[m[1]] = ob; push(conn_order, m[1]); }
 		continue;
@@ -204,17 +204,17 @@ for (let raw in split(text, '\n')) {
 		let conds = [];
 		for (let part in split(m[1], '&')) {
 			let c = match(trim(part), /^(!?)([a-z]+):(.*)$/);
-			if (!c) { fail(ln, trim(part) == '' ? 'пустое условие рядом с «&»' : `«${trim(part)}» — ожидается тип:значение`); continue; }
-			if (!RULE_TYPES[c[2]]) { fail(ln, `неизвестный тип условия «${c[2]}:» (есть domain, list, ip, src, port)`); continue; }
+			if (!c) { fail(ln, trim(part) == '' ? 'empty condition next to "&"' : `"${trim(part)}" — expected type:value`); continue; }
+			if (!RULE_TYPES[c[2]]) { fail(ln, `unknown condition type "${c[2]}:" (available: domain, list, ip, src, port)`); continue; }
 			let values = filter(split(trim(c[3]), /[[:space:],]+/), (v) => v != '');
-			if (!length(values)) { fail(ln, `пустое условие «${c[2]}:»`); continue; }
+			if (!length(values)) { fail(ln, `empty condition "${c[2]}:"`); continue; }
 			push(conds, { type: c[2], neg: c[1] == '!', values });
 		}
 		push(rules, { ln, conds, targets: map(split(m[2], ','), (t) => trim(t)) });
 		continue;
 	}
 
-	fail(ln, 'строка не похожа ни на соединение или цепочку (ИМЯ = …), ни на правило (тип:значение -> ЦЕЛЬ), ни на настройку (@имя = …)');
+	fail(ln, 'line is not a connection or chain (NAME = …), a rule (type:value -> TARGET) or a setting (@name = …)');
 }
 
 // ---------------------------------------------------------------- проверка правил
@@ -225,21 +225,21 @@ let used_lists = {}, list_order = [];
 
 // сначала имена (участники могут ссылаться на цепочки, заданные ниже — это ошибка вложения)
 for (let c in chain_defs) {
-	if (RESERVED[c.name]) fail(c.ln, `имя «${c.name}» зарезервировано`);
-	else if (!match(c.name, /^[A-Za-z0-9-]{1,32}$/)) fail(c.ln, `имя цепочки «${c.name}»: только латиница, цифры и «-»`);
-	else if (connections[c.name]) fail(c.ln, `«${c.name}» уже задано как соединение`);
-	else if (named[c.name]) fail(c.ln, `цепочка ${c.name} уже задана`);
+	if (RESERVED[c.name]) fail(c.ln, `name "${c.name}" is reserved`);
+	else if (!match(c.name, /^[A-Za-z0-9-]{1,32}$/)) fail(c.ln, `chain name "${c.name}": only Latin letters, digits and "-"`);
+	else if (connections[c.name]) fail(c.ln, `"${c.name}" is already defined as a connection`);
+	else if (named[c.name]) fail(c.ln, `chain ${c.name} is already defined`);
 	else { named[c.name] = true; c.ok = true; }
 }
 
 function check_members(members, ln) {
-	if (!length(members)) return fail(ln, 'пустая цепочка');
+	if (!length(members)) return fail(ln, 'empty chain');
 	let seen = {};
 	for (let t in members) {
-		if (t == 'block') return fail(ln, 'block нельзя ставить в цепочку');
-		if (named[t]) return fail(ln, `«${t}» — цепочка; цепочку нельзя вкладывать в другую, перечислите соединения`);
-		if (t != 'direct' && !connections[t]) return fail(ln, `неизвестное соединение «${t}»`);
-		if (seen[t]) return fail(ln, `«${t}» дважды в одной цепочке`);
+		if (t == 'block') return fail(ln, 'block cannot be part of a chain');
+		if (named[t]) return fail(ln, `"${t}" is a chain; chains cannot be nested, list the connections instead`);
+		if (t != 'direct' && !connections[t]) return fail(ln, `unknown connection "${t}"`);
+		if (seen[t]) return fail(ln, `"${t}" appears twice in the same chain`);
 		seen[t] = true;
 	}
 	return true;
@@ -250,11 +250,11 @@ for (let c in chain_defs)
 
 // Цель правила: соединение, именованная цепочка, direct, block или цепочка прямо в правиле (A,B,C)
 function resolve_targets(targets, ln) {
-	if (length(targets) == 0 || targets[0] == '') return fail(ln, 'не указана цель после ->');
+	if (length(targets) == 0 || targets[0] == '') return fail(ln, 'no target after ->');
 	if (length(targets) == 1) {
 		let t = targets[0];
 		if (t == 'direct' || t == 'block' || connections[t] || named[t]) return t;
-		return fail(ln, `неизвестное соединение или цепочка «${t}»`);
+		return fail(ln, `unknown connection or chain "${t}"`);
 	}
 	if (!check_members(targets, ln)) return null;
 	let key = join('_', targets);
@@ -277,53 +277,53 @@ for (let r in rules) {
 	let seen = {};
 	for (let c in r.conds) {
 		let key = (c.neg ? '!' : '') + c.type;
-		if (seen[key]) fail(r.ln, `условие «${key}:» дважды — перечислите значения через запятую`);
+		if (seen[key]) fail(r.ln, `condition "${key}:" appears twice — list the values separated by commas`);
 		seen[key] = true;
 
 		if (c.type == 'domain')
 			c.values = map(c.values, (v) => lc(replace(v, /^\*?\./, '')));
 		for (let v in c.values) {
 			if (c.type == 'domain') {
-				if (!is_domain(v)) fail(r.ln, `«${v}» не похоже на домен`);
+				if (!is_domain(v)) fail(r.ln, `"${v}" does not look like a domain`);
 			}
 			else if (c.type == 'list') {
-				if (!match(v, /^[a-z0-9_]+$/)) fail(r.ln, `имя списка «${v}»: только a-z, 0-9, _`);
+				if (!match(v, /^[a-z0-9_]+$/)) fail(r.ln, `list name "${v}": only a-z, 0-9, _`);
 				else if (!used_lists[v]) { used_lists[v] = true; push(list_order, v); }
 			}
 			else if (c.type == 'port') {
-				if (!parse_port(v)) fail(r.ln, `«${v}» — нужен порт 1-65535 или диапазон вида 50000-65535`);
+				if (!parse_port(v)) fail(r.ln, `"${v}": expected a port 1-65535 or a range like 50000-65535`);
 			}
 			else if (!is_cidr(v))
-				fail(r.ln, `«${v}» не IPv4-адрес или подсеть`);
+				fail(r.ln, `"${v}" is not an IPv4 address or subnet`);
 		}
 	}
 
 	// Правило из одних отрицаний подходит почти всему — пришлось бы гнать через
 	// sing-box весь трафик сети. Для direct это не нужно: direct и так по умолчанию.
 	if (r.target != 'direct' && !length(filter(r.conds, (c) => !c.neg)))
-		fail(r.ln, 'нужно хотя бы одно условие без «!» — иначе через sing-box пришлось бы пропускать весь трафик');
+		fail(r.ln, 'at least one condition without "!" is required — otherwise all traffic would have to go through sing-box');
 }
 
 // настройки
 let ifaces = filter(split(settings.interfaces, /[[:space:],]+/), (v) => v != '');
-if (!length(ifaces)) fail(settings_ln.interfaces ?? 0, '@interfaces пуст');
+if (!length(ifaces)) fail(settings_ln.interfaces ?? 0, '@interfaces is empty');
 for (let i in ifaces)
-	if (!match(i, /^[A-Za-z0-9_.-]{1,15}$/)) fail(settings_ln.interfaces, `@interfaces: «${i}» не похоже на имя интерфейса`);
+	if (!match(i, /^[A-Za-z0-9_.-]{1,15}$/)) fail(settings_ln.interfaces, `@interfaces: "${i}" does not look like an interface name`);
 
 let check_interval = int(settings.check_interval);
-if (check_interval < 5 || check_interval > 3600) fail(settings_ln.check_interval, '@check_interval — секунды, от 5 до 3600');
-if (!match(settings.check_url, /^https?:\/\/\S+$/)) fail(settings_ln.check_url, '@check_url должен быть http(s)-адресом');
+if (check_interval < 5 || check_interval > 3600) fail(settings_ln.check_interval, '@check_interval is in seconds, 5 to 3600');
+if (!match(settings.check_url, /^https?:\/\/\S+$/)) fail(settings_ln.check_url, '@check_url must be an http(s) URL');
 if (!(settings.log in ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'panic']))
-	fail(settings_ln.log, '@log: trace, debug, info, warn или error');
-if (!is_ipv4(settings.bootstrap)) fail(settings_ln.bootstrap, '@bootstrap должен быть IPv4-адресом');
-if (!is_ipv4(settings.dns) && !is_domain(settings.dns)) fail(settings_ln.dns, '@dns — IP или имя DoH-сервера');
+	fail(settings_ln.log, '@log: trace, debug, info, warn or error');
+if (!is_ipv4(settings.bootstrap)) fail(settings_ln.bootstrap, '@bootstrap must be an IPv4 address');
+if (!is_ipv4(settings.dns) && !is_domain(settings.dns)) fail(settings_ln.dns, '@dns: IP or hostname of a DoH server');
 
 let lists_via = resolve_targets(map(split(settings.lists_via, ','), (t) => trim(t)), settings_ln.lists_via ?? 0);
-if (lists_via == 'block') fail(settings_ln.lists_via, '@lists_via не может быть block');
+if (lists_via == 'block') fail(settings_ln.lists_via, '@lists_via cannot be block');
 
 if (length(errors)) {
 	errors = sort(errors, (a, b) => a[0] - b[0]);
-	warn(join('\n', map(errors, (e) => e[0] ? sprintf('строка %d: %s', e[0], e[1]) : e[1])), '\n');
+	warn(join('\n', map(errors, (e) => e[0] ? sprintf('line %d: %s', e[0], e[1]) : e[1])), '\n');
 	exit(1);
 }
 
@@ -611,5 +611,5 @@ put('nft.conf', nft);
 put('state.json', sprintf('%.J\n', state));
 put('env.sh', env);
 
-printf('ok: соединений %d, правил %d, цепочек %d, списков %d\n',
+printf('ok: %d connections, %d rules, %d chains, %d lists\n',
 	length(conn_order), length(rules), length(keys(chains)), length(list_order));
