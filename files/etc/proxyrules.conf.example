@@ -62,7 +62,7 @@ UK  = vless://UUID@203.0.113.40:19252?type=tcp&security=reality&pbk=KEY&sid=SID&
 TR-ONLY  = TR
 AUTO     = DE,UK,TR
 NO-TR    = DE,UK
-TR-FIRST = TR,DE,UK        # as it was in Legacy (Turkey first) + DE
+TR-FIRST = TR,DE,UK        # Turkey first
 
 # ── Rules ───────────────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ domain:payoneer.com, profitwell.com, qualtrics.com, toptal.com      -> TR-FIRST
 domain:steamgames.com, steampowered.com, steamcontent.com           -> TR-FIRST
 domain:openwrt.org, xbox.com                                        -> TR-FIRST
 
-# Foreign and blocked services (formerly the Legacy UK section)
+# Foreign and blocked services
 domain:ai.google, aistudio.google.com, gemini.google.com, labs.google       -> AUTO
 domain:makersuite.google.com, ml.google.com, deepmind.google, cloud.google.com -> AUTO
 domain:anthropic.com, claude.ai, claude.com, claudeusercontent.com          -> AUTO

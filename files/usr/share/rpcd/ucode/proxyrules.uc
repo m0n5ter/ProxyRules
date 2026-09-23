@@ -102,7 +102,6 @@ const methods = {
 			return {
 				running: running(),
 				enabled: sh(`${INIT} enabled`).rc == 0,
-				legacy: sh('nft list table inet LegacyTable >/dev/null').rc == 0,
 				error: readfile(`${RUN}/error`),
 				status: st,
 			};

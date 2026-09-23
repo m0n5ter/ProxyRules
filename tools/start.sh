@@ -1,43 +1,31 @@
 #!/bin/sh
-# Переключение Legacy -> proxyrules. Выполняется на роутере (его запускает router.sh).
+# Запуск (или перезапуск) proxyrules с проверкой. Выполняется на роутере (его запускает router.sh).
 #
-#   sh switch.sh            переключить
-#   sh switch.sh rollback   вернуть Legacy
-#
-# Страховка: перед переключением запускается отдельный процесс. Если за
-# GUARD_SECONDS переключение не подтвердилось (ошибка, скрипт упал, SSH оборвался),
-# он сам возвращает Legacy.
+# Страховка: перед запуском стартует отдельный процесс. Если за GUARD_SECONDS
+# запуск не подтвердился (ошибка, скрипт упал, SSH оборвался), он останавливает
+# proxyrules — роутер остаётся с прямым интернетом, без прокси.
 
 GUARD_SECONDS=90
-OK=/tmp/proxyrules-switch.ok
-SELF=/tmp/proxyrules-switch.sh
+OK=/tmp/proxyrules-start.ok
+SELF=/tmp/proxyrules-start.sh
 
 say() {
 	echo "$*"
-	logger -t proxyrules "switch: $*"
+	logger -t proxyrules "start: $*"
 }
 
-rollback() {
+stop_all() {
 	/etc/init.d/proxyrules stop
 	/etc/init.d/proxyrules disable
-	/etc/init.d/legacy enable
-	/etc/init.d/legacy start
 }
 
-case "$1" in
-rollback)
-	rollback
-	say "Legacy снова работает"
-	exit 0
-	;;
-guard)
+if [ "$1" = guard ]; then
 	sleep "$GUARD_SECONDS"
 	[ -f "$OK" ] && exit 0
-	say "переключение не подтверждено за $GUARD_SECONDS с — откат на Legacy"
-	rollback
+	say "запуск не подтверждён за $GUARD_SECONDS с — proxyrules остановлен, интернет напрямую"
+	stop_all
 	exit 0
-	;;
-esac
+fi
 
 if [ ! -f /etc/proxyrules.conf ]; then
 	say "нет /etc/proxyrules.conf — сначала ./router.sh install"
@@ -48,22 +36,18 @@ rm -f "$OK"
 cp "$0" "$SELF" 2>/dev/null
 # setsid — своя сессия: закрытие SSH её не заденет (nohup в busybox роутера нет)
 setsid sh "$SELF" guard </dev/null >/dev/null 2>&1 &
-say "страховка запущена: откат через $GUARD_SECONDS с, если не будет подтверждения"
+say "страховка запущена: остановка через $GUARD_SECONDS с, если не будет подтверждения"
 
-fail_and_rollback() {
-	say "не получилось: $1 — откат на Legacy"
+fail_and_stop() {
+	say "не получилось: $1 — proxyrules остановлен, интернет напрямую"
 	logread -e proxyrules | tail -15
-	rollback
-	touch "$OK"          # откат сделан, страховке делать нечего
+	stop_all
+	touch "$OK"          # уже остановлено, страховке делать нечего
 	exit 1
 }
 
-say "останавливаю Legacy"
-/etc/init.d/legacy stop
-/etc/init.d/legacy disable
-
 say "запускаю proxyrules"
-/etc/init.d/proxyrules start || fail_and_rollback "сервис не запустился"
+/etc/init.d/proxyrules restart || fail_and_stop "сервис не запустился"
 
 sleep 20
 
@@ -78,7 +62,7 @@ jq -e '[.nodes[] | select(.up == true)] | length > 0' /var/run/proxyrules/status
 code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' https://github.com/)
 [ "$code" != "000" ] || fail="$fail github.com через прокси не открылся;"
 
-[ -z "$fail" ] || fail_and_rollback "$fail"
+[ -z "$fail" ] || fail_and_stop "$fail"
 
 /etc/init.d/proxyrules enable
 touch "$OK"

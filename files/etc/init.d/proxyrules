@@ -73,10 +73,6 @@ start_service() {
 		log "$CONF not found"
 		return 1
 	fi
-	if nft list table inet LegacyTable >/dev/null 2>&1; then
-		log "not started: Legacy is running (service legacy stop; service legacy disable)"
-		return 1
-	fi
 
 	mkdir -p "$RUN" /etc/proxyrules
 	chmod 700 "$RUN" /etc/proxyrules

@@ -9,8 +9,6 @@
 
 import { readfile, writefile, mkdir, stat, open, rename } from 'fs';
 
-// Все номера выбраны так, чтобы не пересекаться с Legacy (1602, 127.0.0.42,
-// 0x00100000/0x00200000, table 105): оба можно держать установленными.
 const C = {
 	TPROXY_PORT: 1612,
 	MIXED_PORT: 1613,

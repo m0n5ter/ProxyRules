@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Управление proxyrules на роутере с этой машины.
 #
-#   ./router.sh install 'vless://…#DE'   скопировать файлы, собрать /etc/proxyrules.conf из
-#                                        настроек Legacy (TR, UK) + ссылки DE. Ничего не запускает.
+#   ./router.sh install TR='vless://…' UK='vless://…' DE='vless://…'
+#                                        скопировать файлы, собрать /etc/proxyrules.conf из
+#                                        примера, подставив ссылки соединений. Ничего не запускает.
 #   ./router.sh update                   только обновить файлы (конфиг и сервис не трогает)
-#   ./router.sh switch                   остановить Legacy, запустить proxyrules, проверить;
-#                                        если проверка не прошла — сам откатывается на Legacy
-#   ./router.sh rollback                 вернуть Legacy
-#   ./router.sh uninstall                вернуть Legacy и удалить proxyrules
+#   ./router.sh start                    (пере)запустить proxyrules и проверить; если проверка
+#                                        не прошла — остановить его (интернет напрямую)
+#   ./router.sh stop                     остановить proxyrules (интернет напрямую)
+#   ./router.sh uninstall                остановить и удалить proxyrules
 #
 # HOST можно переопределить: HOST=root@10.0.0.1 ./router.sh …
 set -euo pipefail
@@ -57,48 +58,65 @@ install_files() {
 	rm -rf "$stage"
 }
 
-# Переключение и откат делает tools/switch.sh на самом роутере. Он загружается
-# и проверяется `sh -n` там же, ДО того как что-либо будет остановлено.
-run_switch() {
-	if grep -qI $'\r' tools/switch.sh; then echo "в tools/switch.sh CRLF" >&2; exit 1; fi
-	remote 'cat > /tmp/proxyrules-switch.sh && sh -n /tmp/proxyrules-switch.sh' < tools/switch.sh
-	remote "sh /tmp/proxyrules-switch.sh ${1:-}"
+# Запуск с проверкой делает tools/start.sh на самом роутере. Он загружается
+# и проверяется `sh -n` там же, ДО того как что-либо будет перезапущено.
+run_start() {
+	if grep -qI $'\r' tools/start.sh; then echo "в tools/start.sh CRLF" >&2; exit 1; fi
+	remote 'cat > /tmp/proxyrules-start.sh && sh -n /tmp/proxyrules-start.sh' < tools/start.sh
+	remote 'sh /tmp/proxyrules-start.sh'
+}
+
+stop_service() {
+	remote '/etc/init.d/proxyrules stop; /etc/init.d/proxyrules disable; echo "proxyrules остановлен"'
 }
 
 case "${1:-}" in
 install)
-	de=${2:-}
-	[[ $de == vless://* ]] || { echo "нужна ссылка DE: ./router.sh install 'vless://…'" >&2; exit 1; }
+	shift
+	(( $# )) || { echo "нужны ссылки: ./router.sh install TR='vless://…' DE='vless://…'" >&2; exit 1; }
+	for a in "$@"; do
+		[[ $a =~ ^[A-Za-z0-9-]+=(vless://|iface:). ]] || { echo "не NAME=vless://… или NAME=iface:…: ${a%%=*}" >&2; exit 1; }
+	done
 	install_files
 
-	# Ссылки TR и UK берутся из Legacy прямо на роутере и сюда не передаются.
-	remote 'DE=$(cat)
+	# Ссылки идут через stdin (NAME=ссылка построчно), а не в командной строке ssh.
+	# Каждая заменяет строку «NAME = …» из примера.
+	printf '%s\n' "$@" | remote '
 		if [ -f /etc/proxyrules.conf ]; then echo "/etc/proxyrules.conf уже есть — не трогаю"; exit 0; fi
-		TR=$(uci get legacy.main.proxy_string) UK=$(uci get legacy.UK.proxy_string) DE="$DE" awk "
-			/^TR  = /{print \"TR  = \" ENVIRON[\"TR\"]; next}
-			/^UK  = /{print \"UK  = \" ENVIRON[\"UK\"]; next}
-			/^DE  = /{print \"DE  = \" ENVIRON[\"DE\"]; next}
-			{print}" /etc/proxyrules.conf.example > /etc/proxyrules.conf
-		chmod 600 /etc/proxyrules.conf
+		umask 077
+		cat > /tmp/proxyrules-links
+		awk "
+			NR == FNR { i = index(\$0, \"=\"); link[substr(\$0, 1, i - 1)] = substr(\$0, i + 1); next }
+			match(\$0, /^[A-Za-z0-9-]+ *= */) {
+				name = substr(\$0, 1, RLENGTH); sub(/ *= *\$/, \"\", name)
+				if (name in link) { print substr(\$0, 1, RLENGTH) link[name]; used[name] = 1; next }
+			}
+			{ print }
+			END { for (n in link) if (!(n in used)) { print \"в примере нет соединения \" n > \"/dev/stderr\"; bad = 1 }
+			      exit bad }" /tmp/proxyrules-links /etc/proxyrules.conf.example > /tmp/proxyrules.conf.new
+		rc=$?
+		rm -f /tmp/proxyrules-links
+		if [ $rc -ne 0 ]; then rm -f /tmp/proxyrules.conf.new; exit 1; fi
+		mv /tmp/proxyrules.conf.new /etc/proxyrules.conf
 		ucode /usr/share/proxyrules/gen.uc /etc/proxyrules.conf /tmp/proxyrules-check /tmp/proxyrules-check/lists \
 			&& sing-box check -c /tmp/proxyrules-check/config.json && echo "/etc/proxyrules.conf собран и проверен"
-		rm -rf /tmp/proxyrules-check' <<<"$de"
+		rm -rf /tmp/proxyrules-check'
 	;;
 
 update)
 	install_files
 	;;
 
-switch)
-	run_switch
+start)
+	run_start
 	;;
 
-rollback)
-	run_switch rollback
+stop)
+	stop_service
 	;;
 
 uninstall)
-	run_switch rollback
+	stop_service
 	remote "
 		set -e
 		rm -f /etc/init.d/proxyrules $(printf '/%s ' "${FILES[@]:2}")
@@ -108,7 +126,7 @@ uninstall)
 	;;
 
 *)
-	sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
 	exit 1
 	;;
 esac
