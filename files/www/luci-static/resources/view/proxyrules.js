@@ -20,6 +20,46 @@ function ago(ts) {
 	return Math.round(s / 86400) + ' d';
 }
 
+const LISTS = [ 'anime', 'block', 'cloudflare', 'cloudfront', 'digitalocean', 'discord', 'geoblock',
+	'google_ai', 'google_meet', 'google_play', 'hdrezka', 'hetzner', 'hodca', 'meta', 'news', 'ovh', 'porn',
+	'roblox', 'russia_inside', 'russia_outside', 'telegram', 'tiktok', 'twitter', 'ukraine_inside', 'youtube' ];
+
+const PLACEHOLDERS = {
+	domain: 'upwork.com, static-upwork.com',
+	list: 'discord',
+	ip: '203.0.113.0/24',
+	src: '192.168.1.15',
+	port: '443, 50000-65535',
+};
+
+// Строка без комментария — как в gen.uc: «#» в начале или после пробела
+function stripComment(line) {
+	return line.replace(/(^|\s)#.*$/, '').trim();
+}
+
+// Имена подключений и цепочек из текста правил — варианты цели
+function targetsOf(text) {
+	const names = [];
+	for (const raw of text.split('\n')) {
+		const m = stripComment(raw).match(/^([A-Za-z0-9-]+)\s*=/);
+		if (m && !names.includes(m[1])) names.push(m[1]);
+	}
+	return names;
+}
+
+// Значения через запятую/пробел; для domain: из вставленной ссылки остаётся только хост
+function normalizeValues(kind, raw) {
+	return raw.split(/[\s,]+/).filter((v) => v != '').map((v) => {
+		if (kind != 'domain') return v;
+		return v.toLowerCase()
+			.replace(/^[a-z]+:\/\//, '')
+			.replace(/[\/?#].*$/, '')
+			.replace(/:\d+$/, '')
+			.replace(/^www\./, '')
+			.replace(/\.$/, '');
+	}).filter((v, i, a) => v != '' && a.indexOf(v) == i);
+}
+
 function nodeState(n) {
 	if (n.up === true) return E('span', { style: 'color:#2a2' }, '● up');
 	if (n.up === false) return E('span', { style: 'color:#d33' }, '● not responding');
@@ -35,9 +75,7 @@ return view.extend({
 		const out = [];
 
 		if (!st.running) {
-			out.push(E('p', { class: 'alert-message warning' }, st.legacy
-				? 'Service is stopped. Legacy is currently running — stop it before starting this service.'
-				: 'Service is stopped.'));
+			out.push(E('p', { class: 'alert-message warning' }, 'Service is stopped.'));
 			if (st.error)
 				out.push(E('pre', { class: 'alert-message error', style: 'white-space:pre-wrap' }, st.error));
 		}
@@ -108,7 +146,7 @@ return view.extend({
 			E('button', { class: 'btn cbi-button', click: ui.createHandlerFn(this, 'handleService', 'restart') }, 'Restart'), ' ',
 			E('button', { class: 'btn cbi-button cbi-button-negative', click: ui.createHandlerFn(this, 'handleService', 'stop') }, 'Stop'),
 		] : [
-			E('button', { class: 'btn cbi-button cbi-button-positive', click: ui.createHandlerFn(this, 'handleService', 'start'), disabled: st.legacy ? '' : null }, 'Start'),
+			E('button', { class: 'btn cbi-button cbi-button-positive', click: ui.createHandlerFn(this, 'handleService', 'start') }, 'Start'),
 		]));
 
 		return out;
@@ -136,11 +174,38 @@ return view.extend({
 
 		poll.add(() => this.refreshStatus(), 5);
 
+		this.qaKind = E('select', { class: 'cbi-input-select', change: () => this.updateQuickAddHints() },
+			Object.keys(PLACEHOLDERS).map((k) => E('option', { value: k }, k + ':')));
+		this.qaValue = E('input', {
+			class: 'cbi-input-text', type: 'text', style: 'flex:1 1 16em;min-width:10em', list: 'proxyrules-lists',
+			keydown: (ev) => { if (ev.key == 'Enter') { ev.preventDefault(); this.handleQuickAdd(false); } },
+		});
+		this.qaTarget = E('select', { class: 'cbi-input-select', focus: () => this.fillTargets() });
+		this.qaPos = E('select', { class: 'cbi-input-select' }, [
+			E('option', { value: 'bottom' }, 'after the last rule'),
+			E('option', { value: 'top' }, 'before the first rule'),
+		]);
+		this.qaComment = E('input', { class: 'cbi-input-text', type: 'text', style: 'flex:0 1 12em;min-width:8em', placeholder: 'comment (optional)' });
+		this.qaDatalist = E('datalist', { id: 'proxyrules-lists' });
+		this.fillTargets();
+		this.updateQuickAddHints();
+
 		return E([], [
 			E('h2', 'Proxy Rules'),
 			E('div', { class: 'cbi-section' }, [
 				E('h3', 'Status'),
 				this.statusNode,
+			]),
+			E('div', { class: 'cbi-section' }, [
+				E('h3', 'Quick add'),
+				E('p', { class: 'cbi-section-descr' },
+					'Adds a rule line to the file below. Several values — separated by commas or spaces; a pasted URL is reduced to its domain. Rules are checked top to bottom, the first match wins.'),
+				E('div', { style: 'display:flex;flex-wrap:wrap;gap:.5em;align-items:center' }, [
+					this.qaKind, this.qaValue, this.qaDatalist,
+					E('span', '→'), this.qaTarget, this.qaPos, this.qaComment,
+					E('button', { class: 'btn cbi-button cbi-button-add', click: ui.createHandlerFn(this, 'handleQuickAdd', false) }, 'Add'),
+					E('button', { class: 'btn cbi-button cbi-button-apply', click: ui.createHandlerFn(this, 'handleQuickAdd', true) }, 'Add & Apply'),
+				]),
 			]),
 			E('div', { class: 'cbi-section' }, [
 				E('h3', 'Rules'),
@@ -154,6 +219,56 @@ return view.extend({
 				]),
 			]),
 		]);
+	},
+
+	updateQuickAddHints() {
+		const kind = this.qaKind.value;
+		this.qaValue.placeholder = PLACEHOLDERS[kind];
+		dom.content(this.qaDatalist, kind == 'list' ? LISTS.map((l) => E('option', { value: l })) : []);
+	},
+
+	// Список целей пересобирается из текущего текста — он мог измениться в редакторе
+	fillTargets() {
+		const prev = this.qaTarget.value;
+		const names = [ ...targetsOf(this.textarea.value), 'direct', 'block' ];
+		dom.content(this.qaTarget, names.map((n) => E('option', { value: n }, n)));
+		this.qaTarget.value = names.includes(prev) ? prev : (names.includes('AUTO') ? 'AUTO' : names[0]);
+	},
+
+	handleQuickAdd(apply) {
+		const kind = this.qaKind.value;
+		const values = normalizeValues(kind, this.qaValue.value);
+		if (!values.length) {
+			dom.content(this.result, E('p', { class: 'alert-message warning' }, 'Enter a value to add.'));
+			this.qaValue.focus();
+			return Promise.resolve();
+		}
+
+		const comment = this.qaComment.value.trim();
+		let line = `${kind}:${values.join(', ')}`;
+		line = line.padEnd(59) + ' -> ' + this.qaTarget.value;
+		if (comment) line += '   # ' + comment;
+
+		// Вставка рядом с существующими правилами, а не в самый конец (там могут быть комментарии)
+		const lines = this.textarea.value.replace(/\n+$/, '').split('\n');
+		const ruleIdx = lines.map((l, i) => /^!?[a-z]+:.+->/.test(stripComment(l)) ? i : -1).filter((i) => i >= 0);
+		let at;
+		if (!ruleIdx.length) at = lines.length;
+		else if (this.qaPos.value == 'top') at = ruleIdx[0];
+		else at = ruleIdx[ruleIdx.length - 1] + 1;
+		lines.splice(at, 0, line);
+		this.textarea.value = lines.join('\n') + '\n';
+
+		// Подсветить добавленную строку
+		const start = lines.slice(0, at).join('\n').length + (at ? 1 : 0);
+		this.textarea.focus();
+		this.textarea.setSelectionRange(start, start + line.length);
+		const lh = parseFloat(getComputedStyle(this.textarea).lineHeight) || 15;
+		this.textarea.scrollTop = Math.max(0, at * lh - this.textarea.clientHeight / 2);
+
+		this.qaValue.value = '';
+		this.qaComment.value = '';
+		return apply ? this.handleApply() : this.handleCheck();
 	},
 
 	showResult(r, okText) {
