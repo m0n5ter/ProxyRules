@@ -206,6 +206,7 @@ const CSS = `
 .pr-row.pr-head { font-size:85%; opacity:.6; border-bottom-color:rgba(128,128,128,.4) }
 .pr-row.pr-head:hover { background:none }
 .pr-row.pr-note { display:flex; gap:.8em; padding-top:1.1em; border-bottom-color:rgba(128,128,128,.45) }
+.pr-note > .pr-handle { flex:0 0 1.4em }
 .pr-note .pr-note-text { flex:1; font-weight:bold; white-space:pre-wrap }
 .pr-note .pr-note-text .pr-sub { font-weight:normal; opacity:.7 }
 .pr-note .pr-note-input { flex:1; min-width:0; font:inherit; font-weight:bold; resize:none; overflow:hidden; line-height:1.5 }
@@ -358,7 +359,10 @@ return view.extend({
 
 		this.savedText = conf.content || '';
 		this.items = parseDoc(this.savedText);
-		this.tab = 'rules';
+		// Открывается последняя вкладка (текст — нет: правки в нём не переживают перезагрузку)
+		let tab = null;
+		try { tab = localStorage.getItem('proxyrules.tab'); } catch (e) { }
+		this.tab = [ 'status', 'rules', 'conns', 'chains', 'settings' ].includes(tab) ? tab : 'rules';
 		this.errors = new Map();     // элемент -> сообщения последней проверки
 		this.editing = null;         // элемент, открытый в редакторе
 		this.editorNode = null;
@@ -388,6 +392,13 @@ return view.extend({
 		this.dirtyNode = E('span', { class: 'pr-dirty' });
 		this.revertBtn = E('button', { class: 'btn cbi-button cbi-button-reset', click: ui.createHandlerFn(this, 'handleRevert') }, 'Revert');
 
+		this.actionsNode = E('div', { class: 'cbi-page-actions', style: 'display:flex;flex-wrap:wrap;gap:.4em;align-items:center;justify-content:flex-end' }, [
+			this.dirtyNode,
+			this.revertBtn,
+			E('button', { class: 'btn cbi-button', title: 'Ctrl+S', click: ui.createHandlerFn(this, 'handleCheck') }, 'Check'),
+			E('button', { class: 'btn cbi-button cbi-button-apply', click: ui.createHandlerFn(this, 'handleApply') }, 'Save & Apply'),
+		]);
+
 		window.addEventListener('beforeunload', (ev) => {
 			if (this.isDirty()) { ev.preventDefault(); ev.returnValue = ''; }
 		});
@@ -404,19 +415,10 @@ return view.extend({
 		}, [
 			E('h2', 'Proxy Rules'),
 			E('div', { class: 'cbi-section' }, [
-				E('h3', 'Status'),
-				this.statusNode,
-			]),
-			E('div', { class: 'cbi-section' }, [
 				this.tabsNode,
 				this.body,
 				this.result,
-				E('div', { class: 'cbi-page-actions', style: 'display:flex;flex-wrap:wrap;gap:.4em;align-items:center;justify-content:flex-end' }, [
-					this.dirtyNode,
-					this.revertBtn,
-					E('button', { class: 'btn cbi-button', title: 'Ctrl+S', click: ui.createHandlerFn(this, 'handleCheck') }, 'Check'),
-					E('button', { class: 'btn cbi-button cbi-button-apply', click: ui.createHandlerFn(this, 'handleApply') }, 'Save & Apply'),
-				]),
+				this.actionsNode,
 			]),
 		]);
 	},
@@ -453,11 +455,14 @@ return view.extend({
 	renderAll() {
 		const count = (k) => this.items.filter((it) => it.kind == k).length;
 		const tabs = [
+			[ 'status', 'Status', {} ],
 			[ 'rules', `Rules (${count('rule')})`, { rule: true, raw: true, note: true } ],
-			[ 'conns', `Connections (${count('conn')}) & chains (${count('chain')})`, { conn: true, chain: true } ],
+			[ 'conns', `Connections (${count('conn')})`, { conn: true } ],
+			[ 'chains', `Chains (${count('chain')})`, { chain: true } ],
 			[ 'settings', 'Settings', { setting: true } ],
 			[ 'text', 'Text file', {} ],
 		];
+		this.rowEls = new Map();
 		dom.content(this.tabsNode, tabs.map(([ id, label, kinds ]) => {
 			const n = this.errCount(kinds);
 			return E('li', { class: id == this.tab ? 'cbi-tab' : 'cbi-tab-disabled' },
@@ -469,12 +474,16 @@ return view.extend({
 			dom.content(this.body, this.renderRulesTab());
 			this.renderRuleList();
 		}
+		else if (this.tab == 'status') dom.content(this.body, [ this.statusNode ]);
 		else if (this.tab == 'conns') dom.content(this.body, this.renderConnsTab());
+		else if (this.tab == 'chains') dom.content(this.body, this.renderChainsTab());
 		else if (this.tab == 'settings') dom.content(this.body, this.renderSettingsTab());
 		else dom.content(this.body, [
 			E('p', { class: 'cbi-section-descr' }, 'File /etc/proxyrules.conf as is. The syntax is described at its top. Ctrl+S — check without saving.'),
 			this.textarea,
 		]);
+		// Проверка и сохранение относятся к файлу — на вкладке статуса их нет
+		this.actionsNode.style.display = this.result.style.display = this.tab == 'status' ? 'none' : '';
 		this.updateDirty();
 	},
 
@@ -491,6 +500,7 @@ return view.extend({
 		else if (tab == 'text')
 			this.textarea.value = serialize(this.items);
 		this.tab = tab;
+		try { localStorage.setItem('proxyrules.tab', tab); } catch (e) { }
 		dom.content(this.result, []);
 		this.renderAll();
 	},
@@ -679,9 +689,7 @@ return view.extend({
 			this.listsDatalist,
 			E('div', { class: 'pr-toolbar' }, [
 				this.filterInput,
-				E('span', { style: 'opacity:.65;font-size:90%;flex:1' }, 'Checked top to bottom, the first match wins. Drag ⋮⋮ or use ↑ ↓ to reorder; double-click a rule to edit.'),
-				btn('+ Rule', 'Add a rule after the last one', () => this.addRule(), 'cbi-button-add'),
-				btn('+ Group', 'Add a heading for a group of rules', () => this.addGroup(), ''),
+				E('span', { style: 'opacity:.65;font-size:90%;flex:1' }, 'Checked top to bottom, the first match wins. Drag ⋮⋮ or use ↑ ↓ to reorder; double-click a rule to edit; +R / +G add a rule / group right below.'),
 			]),
 			this.ruleList,
 		];
@@ -711,8 +719,13 @@ return view.extend({
 			rows.push(it.kind == 'note' ? this.noteRow(it) : this.ruleRow(it));
 			this.rowEls.set(it, rows[rows.length - 1]);
 		}
+		// Совсем пусто — добавлять не от чего, поэтому кнопки здесь
 		if (rows.length == 1)
-			rows.push(E('div', { class: 'pr-empty' }, q ? 'Nothing matches the filter.' : 'No rules yet — add one above.'));
+			rows.push(q ? E('div', { class: 'pr-empty' }, 'Nothing matches the filter.') : E('div', { class: 'pr-empty' }, [
+				'No rules yet. ',
+				btn('+ Rule', 'Add a rule', () => this.addRule(), 'cbi-button-add'), ' ',
+				btn('+ Group', 'Add a heading for a group of rules', () => this.addGroup(), ''),
+			]));
 		dom.content(this.ruleList, rows);
 		if (this.ruleList.querySelector('.pr-flash')) this.clearFlash();
 	},
@@ -764,6 +777,8 @@ return view.extend({
 				btn('↓', 'Move down', () => this.step(it, 1)),
 				btn('✎', 'Edit', () => this.edit(it)),
 				btn('⧉', 'Duplicate', () => this.duplicate(it)),
+				btn('+R', 'Add a rule below this one', () => this.insertRule(it)),
+				btn('+G', 'Start a new group below this rule', () => this.insertGroup(it)),
 				btn('✕', 'Delete', () => this.remove(it), 'pr-icon cbi-button-negative'),
 			]),
 		]);
@@ -777,38 +792,46 @@ return view.extend({
 		// Рамки вида «── Rules ────» при показе убираются
 		const lines = noteText(it).split('\n').map((l) => l.replace(/^[─═━\-=\s]+|[─═━\-=\s]+$/g, '')).filter((l) => l != '');
 		const row = E('div', { class: 'pr-row pr-note', dblclick: (ev) => ev.target.closest('button') || this.edit(it) }, [
+			E('span', { class: 'pr-handle', title: 'Drag to move the whole group', mousedown: () => row.draggable = true, mouseup: () => row.draggable = false }, [ '⋮⋮' ]),
 			E('div', { class: 'pr-note-text' }, lines.length
 				? [ lines[0], ...lines.slice(1).map((l) => T('div', { class: 'pr-sub' }, l)) ]
 				: [ E('span', { class: 'pr-sub' }, '(separator)') ]),
 			E('div', { class: 'pr-actions' }, [
-				btn('+', 'Add a rule to this group', () => this.addRuleToGroup(it)),
+				btn('+R', 'Add a rule at the top of this group', () => this.insertRule(it)),
+				btn('+G', 'Add a group below this one', () => this.insertGroup(it)),
 				btn('✎', 'Edit heading', () => this.edit(it)),
 				btn('✕', 'Delete heading (rules stay)', () => this.remove(it), 'pr-icon cbi-button-negative'),
 			]),
 		]);
+		this.dragSource(row, it);
 		this.dropTarget(row, it);
 		return row;
 	},
 
+	// Тащится правило или, за заголовок, группа целиком (заголовок + её правила)
 	dragSource(row, it) {
 		row.addEventListener('dragstart', (ev) => {
-			this.dragItem = it;
+			const group = it.kind == 'note';
+			const [ a, b ] = group ? this.sectionOf(it) : [ 0, -1 ];
+			this.drag = { it, group, items: group ? this.items.slice(a, b + 1) : [ it ] };
 			ev.dataTransfer.effectAllowed = 'move';
 			ev.dataTransfer.setData('text/plain', '');
-			row.classList.add('pr-dragging');
+			this.drag.items.forEach((x) => { const el = this.rowEls.get(x); if (el) el.classList.add('pr-dragging'); });
+			this.startAutoScroll();
 		});
 		row.addEventListener('dragend', () => {
 			row.draggable = false;
-			row.classList.remove('pr-dragging');
-			this.dragItem = null;
-			this.ruleList.querySelectorAll('.pr-drop-before, .pr-drop-after').forEach((r) => r.classList.remove('pr-drop-before', 'pr-drop-after'));
+			this.drag = null;
+			this.stopAutoScroll();
+			this.ruleList.querySelectorAll('.pr-dragging, .pr-drop-before, .pr-drop-after')
+				.forEach((r) => r.classList.remove('pr-dragging', 'pr-drop-before', 'pr-drop-after'));
 		});
 	},
 
 	dropTarget(row, it) {
 		const clear = () => row.classList.remove('pr-drop-before', 'pr-drop-after');
 		row.addEventListener('dragover', (ev) => {
-			if (!this.dragItem || this.dragItem == it) return;
+			if (!this.drag || this.drag.items.includes(it)) return;
 			ev.preventDefault();
 			const r = row.getBoundingClientRect();
 			row.dataset.where = ev.clientY < r.top + r.height / 2 ? 'before' : 'after';
@@ -819,9 +842,38 @@ return view.extend({
 		row.addEventListener('drop', (ev) => {
 			ev.preventDefault();
 			clear();
-			const src = this.dragItem;
-			if (src && src != it) this.act(() => { this.moveTo(src, it, row.dataset.where); this.flash = src; });
+			const d = this.drag;
+			if (!d || d.items.includes(it)) return;
+			this.act(() => {
+				if (d.group) this.moveGroup(d.it, it, row.dataset.where);
+				else this.moveTo(d.it, it, row.dataset.where);
+				this.flash = d.it;
+			});
 		});
+	},
+
+	// Пока что-то тащат, у верхнего/нижнего края страница прокручивается сама —
+	// тем быстрее, чем ближе курсор к краю
+	startAutoScroll() {
+		this.dragY = null;
+		this.onDragMove = (ev) => { this.dragY = ev.clientY; };
+		document.addEventListener('dragover', this.onDragMove);
+		const sc = this.scroller(), zone = 80, max = 18;
+		const tick = () => {
+			if (!this.drag) return;
+			const v = this.viewport(sc), y = this.dragY;
+			let d = 0;
+			if (y != null && y < v.top + zone) d = -max * Math.min(1, (v.top + zone - y) / zone);
+			else if (y != null && y > v.bottom - zone) d = max * Math.min(1, (y - v.bottom + zone) / zone);
+			if (d) sc.scrollBy(0, Math.round(d));
+			this.scrollRaf = requestAnimationFrame(tick);
+		};
+		this.scrollRaf = requestAnimationFrame(tick);
+	},
+
+	stopAutoScroll() {
+		cancelAnimationFrame(this.scrollRaf);
+		document.removeEventListener('dragover', this.onDragMove);
 	},
 
 	// Перед заголовком группы — значит в конец предыдущей группы (до пустых строк над заголовком)
@@ -832,6 +884,29 @@ return view.extend({
 		else if (ref.kind == 'note')
 			while (i > 0 && this.items[i - 1].kind == 'blank') i--;
 		this.items.splice(i, 0, it);
+	},
+
+	// Группа — от заголовка (или пустой строки) до следующей пустой строки или заголовка: [первый, последний]
+	sectionOf(it) {
+		const start = this.ruleRegionStart();
+		let i = this.items.indexOf(it), j = i;
+		while (i > start && this.items[i].kind != 'note' && this.items[i - 1].kind != 'blank') i--;
+		while (j + 1 < this.items.length && this.items[j + 1].kind != 'blank' && this.items[j + 1].kind != 'note') j++;
+		return [ i, j ];
+	},
+
+	// Группа целиком — перед/после группы, в которой ref; группы разделены пустой строкой
+	moveGroup(note, ref, where) {
+		const L = this.items;
+		const [ a, b ] = this.sectionOf(note);
+		const group = L.splice(a, b - a + 1);
+		if (a > 0 && a < L.length && L[a - 1].kind == 'blank' && L[a].kind == 'blank') L.splice(a, 1);
+		const [ c, d ] = this.sectionOf(ref);
+		let at = where == 'before' ? c : d + 1;
+		if (at > 0 && L[at - 1].kind != 'blank') L.splice(at++, 0, { kind: 'blank', lines: [ '' ] });
+		L.splice(at, 0, ...group);
+		at += group.length;
+		if (at < L.length && L[at].kind != 'blank') L.splice(at, 0, { kind: 'blank', lines: [ '' ] });
 	},
 
 	// На одну позицию; через заголовок группы — в соседнюю группу
@@ -858,24 +933,44 @@ return view.extend({
 		return { kind: 'rule', lines: [], conds: [ { neg: false, type: 'domain', values: [] } ], target: target || '', comment: '', dirty: true, isNew: true };
 	},
 
-	addRuleToGroup(note) {
+	// Новое правило сразу под строкой ref (правилом или заголовком группы); цель — как у соседнего правила
+	insertRule(ref) {
 		if (!this.closeEditor(true)) return;
-		let i = this.items.indexOf(note), at = i + 1;
-		for (let j = i + 1; j < this.items.length && this.items[j].kind != 'note'; j++)
-			if (this.items[j].kind == 'rule') at = j + 1;
-		const prev = this.items[at - 1];
-		const it = this.newRule(prev && prev.kind == 'rule' ? prev.target : '');
+		const at = this.items.indexOf(ref) + 1;
+		const near = ref.kind == 'rule' ? ref : this.items[at];
+		const it = this.newRule(near && near.kind == 'rule' ? near.target : '');
 		this.items.splice(at, 0, it);
 		this.edit(it);
+	},
+
+	// Новая группа: под правилом — начинается прямо здесь (правила ниже уходят в неё),
+	// под заголовком — после всей его группы
+	insertGroup(ref) {
+		if (!this.closeEditor(true)) return;
+		let at = this.items.indexOf(ref) + 1;
+		if (ref.kind == 'note')
+			while (at < this.items.length && this.items[at].kind != 'blank' && this.items[at].kind != 'note') at++;
+		this.newGroupAt(at);
+	},
+
+	newGroupAt(at) {
+		const blank = { kind: 'blank', lines: [ '' ] };
+		const it = { kind: 'note', lines: [], text: '', dirty: true, isNew: true, blank };
+		this.items.splice(at, 0, blank, it);
+		this.edit(it);
+	},
+
+	// Убрать заголовок; у только что добавленного — и пустую строку, вставленную вместе с ним
+	dropNote(it) {
+		this.items.splice(this.items.indexOf(it), 1);
+		if (it.blank && this.items.includes(it.blank)) this.items.splice(this.items.indexOf(it.blank), 1);
 	},
 
 	addGroup() {
 		if (!this.closeEditor(true)) return;
 		let at = this.items.length;
 		while (at > 0 && this.items[at - 1].kind == 'blank') at--;
-		const it = { kind: 'note', lines: [], text: '', dirty: true, isNew: true };
-		this.items.splice(at, 0, { kind: 'blank', lines: [ '' ] }, it);
-		this.edit(it);
+		this.newGroupAt(at);
 	},
 
 	ruleEditor(it) {
@@ -962,12 +1057,13 @@ return view.extend({
 		fit();
 		this.pending = {
 			apply: () => {
-				if (text.value.trim() == '') this.items.splice(this.items.indexOf(it), 1);
+				if (text.value.trim() == '') this.dropNote(it);
 				it.isNew = false;
+				delete it.blank;
 				return true;
 			},
 			cancel: () => {
-				if (it.isNew) this.items.splice(this.items.indexOf(it), 1);
+				if (it.isNew) this.dropNote(it);
 				else Object.assign(it, orig);
 			},
 		};
@@ -1051,42 +1147,50 @@ return view.extend({
 		this.remove(it);
 	},
 
+	// Строка соединения/цепочки; редактор — на её месте
+	structRow(it, cells) {
+		if (it == this.editing) {
+			this.editorNode = this.editorNode || (it.kind == 'conn' ? this.connEditor(it) : this.chainEditor(it));
+			this.rowEls.set(it, this.editorNode);
+			return this.editorNode;
+		}
+		const used = this.usedBy(it.name);
+		const r = E('div', { class: 'pr-row' + (it == this.flash ? ' pr-flash' : ''), dblclick: (ev) => ev.target.closest('button') || this.edit(it) }, [
+			T('strong', {}, it.name),
+			cells,
+			T('div', { class: 'pr-comment' }, used.length ? 'used by ' + used.join(', ') : 'not used'),
+			E('div', { class: 'pr-c-actions pr-actions' }, [
+				btn('✎', 'Edit', () => this.edit(it)),
+				btn('✕', 'Delete', () => this.confirmRemove(it), 'pr-icon cbi-button-negative'),
+			]),
+		]);
+		this.errorsOf(it, r);
+		this.rowEls.set(it, r);
+		return r;
+	},
+
 	renderConnsTab() {
 		const conns = this.items.filter((it) => it.kind == 'conn');
-		const chains = this.items.filter((it) => it.kind == 'chain');
-		const row = (it, cells) => {
-			if (it == this.editing)
-				return this.editorNode = this.editorNode || (it.kind == 'conn' ? this.connEditor(it) : this.chainEditor(it));
-			const used = this.usedBy(it.name);
-			const r = E('div', { class: 'pr-row' + (it == this.flash ? ' pr-flash' : ''), dblclick: (ev) => ev.target.closest('button') || this.edit(it) }, [
-				T('strong', {}, it.name),
-				cells,
-				T('div', { class: 'pr-comment' }, used.length ? 'used by ' + used.join(', ') : 'not used'),
-				E('div', { class: 'pr-c-actions pr-actions' }, [
-					btn('✎', 'Edit', () => this.edit(it)),
-					btn('✕', 'Delete', () => this.confirmRemove(it), 'pr-icon cbi-button-negative'),
-				]),
-			]);
-			this.errorsOf(it, r);
-			return r;
-		};
 		this.clearFlash();
-
 		return [
-			E('h3', 'Connections'),
 			E('p', { class: 'cbi-section-descr' }, 'A vless:// link as the server gave it, or an OpenWrt interface (AmneziaWG, WireGuard…).'),
 			E('div', { class: 'pr-list pr-conns' }, [
-				...conns.map((it) => row(it, E('div', { class: 'pr-mono', title: 'Double-click to see the full link' }, [
+				...conns.map((it) => this.structRow(it, E('div', { class: 'pr-mono', title: 'Double-click to see the full link' }, [
 					linkSummary(it.link), it.comment ? T('span', { class: 'pr-comment' }, '  # ' + it.comment) : '',
 				]))),
 				conns.length ? '' : E('div', { class: 'pr-empty' }, 'No connections yet.'),
 			].filter((x) => x)),
 			btn('+ Connection', 'Add a connection', () => this.addStruct({ kind: 'conn', name: '', link: '', comment: '' }, [ 'conn', 'setting' ]), 'cbi-button-add'),
+		];
+	},
 
-			E('h3', { style: 'margin-top:2em' }, 'Chains'),
+	renderChainsTab() {
+		const chains = this.items.filter((it) => it.kind == 'chain');
+		this.clearFlash();
+		return [
 			E('p', { class: 'cbi-section-descr' }, 'The first live connection in order is used; when a higher-priority one comes back, traffic switches back to it. A chain holds only connections and direct.'),
 			E('div', { class: 'pr-list pr-conns' }, [
-				...chains.map((it) => row(it, E('div', {}, [
+				...chains.map((it) => this.structRow(it, E('div', {}, [
 					it.members.join(' → '), it.comment ? T('span', { class: 'pr-comment' }, '  # ' + it.comment) : '',
 				]))),
 				chains.length ? '' : E('div', { class: 'pr-empty' }, 'No chains yet.'),
