@@ -110,7 +110,7 @@ if [ -n "$OLD" ]; then say "обновлено: $OLD → $VERSION"; else say "у
 
 if [ -n "$RESTART" ] && /etc/init.d/proxyrules running; then
 	say "перезапускаю сервис"
-	/etc/init.d/proxyrules restart
+	/etc/init.d/proxyrules restart >/dev/null 2>&1
 	sleep 3
 	/etc/init.d/proxyrules running || die "сервис не поднялся после обновления: logread -e proxyrules"
 fi
