@@ -499,7 +499,7 @@ return view.extend({
 			[ 'conns', `Connections (${count('conn')})`, { conn: true } ],
 			[ 'chains', `Chains (${count('chain')})`, { chain: true } ],
 			[ 'settings', 'Settings', { setting: true } ],
-			[ 'text', 'Text file', {} ],
+			[ 'text', 'Config file', {} ],
 		];
 		this.rowEls = new Map();
 		dom.content(this.tabsNode, tabs.map(([ id, label, kinds ]) => {
