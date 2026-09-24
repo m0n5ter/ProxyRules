@@ -4,10 +4,10 @@
 #  CONNECTIONS          NAME = vless://…           (the whole link, as the server gave it)
 #                       NAME = iface:awg0          (OpenWrt interface: AmneziaWG, WireGuard…)
 #
-#  CHAINS               NAME = DE,UK,TR            first live connection in order;
+#  CHAINS               NAME = DE,NL               first live connection in order;
 #                                                  when a higher-priority one comes back —
 #                                                  switch back to it
-#                       NAME = TR,direct           if TR is down — go direct
+#                       NAME = NL,direct           if NL is down — go direct
 #                       a chain holds only connections and direct (chains don't nest)
 #
 #                       names: Latin letters, digits, "-"; direct and block are reserved
@@ -17,7 +17,7 @@
 #
 #  CONDITIONS           type:value[, value…]           (comma means "or")
 #
-#    domain:upwork.com         the domain and all its subdomains
+#    domain:example.com        the domain and all its subdomains
 #    list:discord              itdoginfo/allow-domains list (domains + subnets)
 #                              available: anime block cloudflare cloudfront digitalocean discord
 #                              geoblock google_ai google_meet google_play hdrezka hetzner
@@ -34,88 +34,61 @@
 #    at least one condition must be without "!" (except rules with target direct)
 #
 #  TARGETS              AUTO                a chain
-#                       UK                  a single connection, no fallback
+#                       NL                  a single connection, no fallback
 #                       direct              direct, no proxy
 #                       block               block
-#                       (also inline in a rule: -> TR,DE — an unnamed chain)
+#                       (also inline in a rule: -> NL,DE — an unnamed chain)
 #
 #  Anything not matched by any rule goes direct.
 #  Comment — "#" at the start of a line or after a space.
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── Settings (fine to leave as is) ──────────────────────────────────────────
-@interfaces     = br-lan WG0        # where to intercept traffic from
+@interfaces     = br-lan            # where to intercept traffic from
 @dns            = 8.8.8.8           # DoH server
 @bootstrap      = 77.88.8.8
 @check_url      = https://www.gstatic.com/generate_204
 @check_interval = 10                # seconds between connection checks
-@lists_via      = NO-TR             # what to download list: lists through
+@lists_via      = AUTO              # what to download list: lists through
 @log            = warn
 
 # ── Connections ─────────────────────────────────────────────────────────────
-TR  = vless://UUID@203.0.113.30:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=google.com&fp=chrome&flow=xtls-rprx-vision#TR
-DE  = vless://UUID@203.0.113.10:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=www.amd.com&fp=chrome&flow=xtls-rprx-vision#DE
-UK  = vless://UUID@203.0.113.40:19252?type=tcp&security=reality&pbk=KEY&sid=SID&sni=google.com&fp=chrome&flow=xtls-rprx-vision#UK
+# Replace with your own links (the whole vless://… as the server gave it).
+DE  = vless://UUID@203.0.113.10:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=www.microsoft.com&fp=chrome&flow=xtls-rprx-vision#DE
+NL  = vless://UUID@203.0.113.20:443?type=tcp&security=reality&pbk=KEY&sid=SID&sni=www.microsoft.com&fp=chrome&flow=xtls-rprx-vision#NL
 # AWG = iface:awg0
 
 # ── Chains ──────────────────────────────────────────────────────────────────
-TR-ONLY  = TR
-AUTO     = DE,UK,TR
-NO-TR    = DE,UK
-TR-FIRST = TR,DE,UK        # Turkey first
+AUTO     = DE,NL
+NL-FIRST = NL,DE
+NL-ONLY  = NL
 
 # ── Rules ───────────────────────────────────────────────────────────────────
 
-# My VPSes and the router's public IP — always direct, from any device.
+# Your own servers — always direct, from any device.
 # Comes first so that src: and list:hetzner/ovh/… below don't catch it.
-ip:203.0.113.30, 203.0.113.10, 203.0.113.40, 198.51.100.1   -> direct
+ip:203.0.113.10, 203.0.113.20                                       -> direct
 
-# Upwork — Turkey only, from any device. It is above src:, so Monster-PC
-# gets Turkey only too: if TR is down, Upwork doesn't open.
-domain:upwork.com, static-upwork.com                        -> TR-ONLY
+# A site that must always open from one country, from any device.
+# It is above src:, so the devices below get NL only for it too.
+domain:example.com                                                  -> NL-ONLY
 
 # Whole devices
-src:192.168.1.15                                            -> TR-FIRST   # Monster-PC
-src:192.168.1.18                                            -> TR-FIRST   # Xbox
-src:192.168.1.42                                            -> AUTO       # Xubuntu
-src:192.168.1.101                                           -> AUTO
+src:192.168.1.50                                                    -> AUTO       # laptop
+src:192.168.1.60                                                    -> NL-FIRST   # game console
 
-# Turkish and other services
-domain:ajet.com, denizbank.com, humblebundle.com, localizecdn.com   -> TR-FIRST
-domain:mouseacceleration.com, meet.google.com, paddle.com           -> TR-FIRST
-domain:payoneer.com, profitwell.com, qualtrics.com, toptal.com      -> TR-FIRST
-domain:steamgames.com, steampowered.com, steamcontent.com           -> TR-FIRST
-domain:openwrt.org, xbox.com                                        -> TR-FIRST
+# Only this device goes through the proxy for the site; everyone else direct
+src:192.168.1.50 & domain:example.org                               -> DE
 
 # Foreign and blocked services
-domain:ai.google, aistudio.google.com, gemini.google.com, labs.google       -> AUTO
-domain:makersuite.google.com, ml.google.com, deepmind.google, cloud.google.com -> AUTO
-domain:anthropic.com, claude.ai, claude.com, claudeusercontent.com          -> AUTO
-domain:openai.com, chatgpt.com, oaiusercontent.com, grok.com, deepl.com     -> AUTO
-domain:github.com, githubusercontent.com, githubcopilot.com, jetbrains.com  -> AUTO
-domain:bankofamerica.com, bac-assets.com, paypal.com, stripe.com, fastspring.com -> AUTO
-domain:cex.io, bestchange.ru, ninjatrader.com                               -> AUTO
-domain:discord.com, discord.co, discord.dev, discord.gg, discord.gift       -> AUTO
-domain:discord.media, discord.new, discord.app.com, discordapp.com          -> AUTO
-domain:discordapp.net, discordcdn.com, discordstatus.com, dis.gd            -> AUTO
-domain:facebook.com, fbcdn.net, instagram.com, cdninstagram.com             -> AUTO
-domain:twitter.com, x.com, twimg.com, telegram.org, whatsapp.net            -> AUTO
-domain:linkedin.com, licdn.com, indeed.com, glassdoor.com, monster.com      -> AUTO
-domain:hackerrank.com, hrcdn.net, medium.com, quora.com, trustpilot.com     -> AUTO
-domain:intercom.io, intercom.help, intercomcdn.com, custhelp.com            -> AUTO
-domain:bbc.com, bbc.co.uk, bbci.co.uk, dw.com, foxnews.com, express.co.uk   -> AUTO
-domain:theeconomist.com, makeuseof.com, nationalintel.com                   -> AUTO
-domain:spotify.com, chess.com, modrinth.com, idiod.video, img9-no-fun.xyz   -> AUTO
-domain:brawlstars.com, brawlstarsgame.com, supercell.com, supercellid.com   -> AUTO
-domain:supercellstore.com, supercellgames.com                               -> AUTO
-domain:rutracker.org, rutor.info, ntc.party, qbittorrent.org                -> AUTO
-domain:live.com, oracle.com, intel.com, logitech.com, seagate.com, canon.com -> AUTO
-domain:dlink.com, st.com, cpuid.com, ultimaker.com, virtualbox.org          -> AUTO
-domain:notepad-plus-plus.org, rustdesk.com, wiresock.net, obfuscar.com      -> AUTO
-domain:avaloniaui.net, providersoftllc.com, pathcam.com, seeurlpcl.com      -> AUTO
-domain:browser-intake-datadoghq.com, o315582.ingest.sentry.io, studio.bot   -> AUTO
-domain:costco.com, walmart.com, ticketmaster.com, crunchlabs.com            -> AUTO
-domain:myunidays.com, bu.edu, uchealth.org, dot.gov, transportation.gov     -> AUTO
+domain:anthropic.com, claude.ai, claude.com, claudeusercontent.com  -> AUTO
+domain:openai.com, chatgpt.com, oaiusercontent.com                  -> AUTO
+domain:ai.google, aistudio.google.com, gemini.google.com            -> AUTO
+domain:github.com, githubusercontent.com, githubcopilot.com         -> AUTO
+domain:linkedin.com, licdn.com, medium.com, spotify.com             -> AUTO
 
-list:news, meta, discord, twitter, cloudflare, hdrezka, tiktok              -> AUTO
-list:digitalocean, ovh, telegram, google_ai, youtube, hetzner, cloudfront   -> AUTO
+list:youtube, discord, meta, twitter, telegram, tiktok, news        -> AUTO
+list:google_ai, cloudflare, cloudfront, hetzner, ovh, digitalocean  -> AUTO
+
+# Ads and trackers — blocked
+domain:doubleclick.net                                              -> block

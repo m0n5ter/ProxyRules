@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Управление proxyrules на роутере с этой машины.
 #
-#   ./router.sh install TR='vless://…' UK='vless://…' DE='vless://…'
+#   ./router.sh install DE='vless://…' NL='vless://…'
 #                                        скопировать файлы, собрать /etc/proxyrules.conf из
 #                                        примера, подставив ссылки соединений. Ничего не запускает.
 #   ./router.sh update                   поставить файлы из рабочей копии (конфиг и сервис
@@ -47,7 +47,7 @@ stop_service() {
 case "${1:-}" in
 install)
 	shift
-	(( $# )) || { echo "нужны ссылки: ./router.sh install TR='vless://…' DE='vless://…'" >&2; exit 1; }
+	(( $# )) || { echo "нужны ссылки: ./router.sh install DE='vless://…' NL='vless://…'" >&2; exit 1; }
 	for a in "$@"; do
 		[[ $a =~ ^[A-Za-z0-9-]+=(vless://|iface:). ]] || { echo "не NAME=vless://… или NAME=iface:…: ${a%%=*}" >&2; exit 1; }
 	done
