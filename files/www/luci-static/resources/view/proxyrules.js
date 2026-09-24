@@ -201,8 +201,20 @@ const CSS = `
 .pr-list { margin:.3em 0 1em }
 .pr-row { display:grid; gap:.25em .8em; align-items:center; padding:.35em .3em; border-bottom:1px solid rgba(128,128,128,.18) }
 .pr-row:hover { background:rgba(128,128,128,.07) }
-.pr-rules > .pr-row { grid-template-columns:1.4em minmax(0,1fr) minmax(7em,11em) minmax(0,13em) auto }
-.pr-conns > .pr-row { grid-template-columns:minmax(6em,10em) minmax(0,1fr) minmax(0,14em) auto }
+/* Одна сетка на весь список, строки — её части (subgrid): колонки общие для всех строк,
+   Target и Comment — по содержимому, Condition — всё остальное */
+.pr-rules, .pr-conns { display:grid }
+.pr-rules { grid-template-columns:auto minmax(0,1fr) auto auto auto }
+.pr-conns { grid-template-columns:auto minmax(0,1fr) auto auto }
+.pr-rules > *, .pr-conns > * { grid-column:1 / -1 }
+.pr-rules > .pr-row:not(.pr-note), .pr-conns > .pr-row { grid-template-columns:subgrid }
+.pr-rules > .pr-row > .pr-c-target { max-width:16em }
+.pr-rules > .pr-row > .pr-c-comment { max-width:18em }
+.pr-conns > .pr-row > .pr-comment { max-width:18em }
+.pr-rules > .pr-row > .pr-handle { width:1.4em }
+/* правило внутри группы — с отступом (ручка и условия сдвинуты относительно заголовка) */
+.pr-rules > .pr-row.pr-in-group > .pr-handle { margin-left:1.1em }
+.pr-rules > .pr-edit.pr-in-group { margin-left:1.1em }
 .pr-row.pr-head { font-size:85%; opacity:.6; border-bottom-color:rgba(128,128,128,.4) }
 .pr-row.pr-head:hover { background:none }
 .pr-row.pr-note { display:flex; gap:.8em; padding-top:1.1em; border-bottom-color:rgba(128,128,128,.45) }
@@ -227,6 +239,7 @@ const CSS = `
 .pr-t-block { background:rgba(220,50,50,.25) }
 .pr-t-unknown { background:none; outline:1px dashed #d33; color:#d33 }
 .pr-rules > .pr-row > .pr-c-wide { grid-column:2 / span 3 }
+.pr-row.pr-head > span { white-space:nowrap }
 .pr-comment { opacity:.65; font-size:90%; overflow-wrap:anywhere }
 .pr-mono { font-family:monospace; font-size:90%; overflow-wrap:anywhere }
 .pr-actions { white-space:nowrap; text-align:right }
@@ -252,12 +265,14 @@ const CSS = `
 .pr-dirty { color:#e67e22; font-weight:bold; margin-right:auto }
 .pr-empty { padding:1em; opacity:.6 }
 @media (max-width: 800px) {
-	.pr-rules > .pr-row { grid-template-columns:1.4em minmax(0,1fr) auto }
+	/* узко: всё в одну колонку под ручкой, кнопки — строкой под правилом */
+	.pr-rules { grid-template-columns:auto minmax(0,1fr) }
 	.pr-rules > .pr-row > .pr-c-conds, .pr-rules > .pr-row > .pr-c-wide { grid-column:2; grid-row:1 }
-	.pr-rules > .pr-row > .pr-c-actions { grid-column:3; grid-row:1 / span 3 }
-	.pr-rules > .pr-row > .pr-c-target, .pr-rules > .pr-row > .pr-c-comment { grid-column:2 }
+	.pr-rules > .pr-row > .pr-c-target, .pr-rules > .pr-row > .pr-c-comment, .pr-rules > .pr-row > .pr-c-actions { grid-column:2 }
+	.pr-rules > .pr-row > .pr-c-actions { white-space:normal; text-align:left }
+	.pr-rules > .pr-row > .pr-c-actions .btn { margin:0 .2em 0 0 !important }
 	.pr-rules > .pr-row > .pr-c-comment:empty, .pr-row.pr-head { display:none }
-	.pr-conns > .pr-row { grid-template-columns:minmax(0,1fr) auto }
+	.pr-conns { grid-template-columns:minmax(0,1fr) auto }
 	.pr-conns > .pr-row > .pr-c-actions { grid-column:2; grid-row:1 / span 3 }
 	.pr-conns > .pr-row > :not(.pr-c-actions) { grid-column:1 }
 }
@@ -707,17 +722,19 @@ return view.extend({
 			E('div', { class: 'pr-row pr-head' }, [ E('span'), E('span', 'Condition'), E('span', 'Target'), E('span', 'Comment'), E('span') ]),
 		];
 		this.rowEls = new Map();
+		let inGroup = false;   // под заголовком, до пустой строки
 		for (let i = this.ruleRegionStart(); i < this.items.length; i++) {
 			const it = this.items[i];
-			if (it.kind == 'blank') continue;
-			if (it == this.editing) {
-				rows.push(this.editorNode = this.editorNode || (it.kind == 'note' ? this.noteEditor(it) : it.kind == 'rule' ? this.ruleEditor(it) : this.rawEditor(it)));
-				this.rowEls.set(it, this.editorNode);
-				continue;
-			}
-			if (q && !this.matches(it, q)) continue;
-			rows.push(it.kind == 'note' ? this.noteRow(it) : this.ruleRow(it));
-			this.rowEls.set(it, rows[rows.length - 1]);
+			if (it.kind == 'blank') { inGroup = false; continue; }
+			if (it.kind == 'note') inGroup = true;
+			let row;
+			if (it == this.editing)
+				row = this.editorNode = this.editorNode || (it.kind == 'note' ? this.noteEditor(it) : it.kind == 'rule' ? this.ruleEditor(it) : this.rawEditor(it));
+			else if (q && !this.matches(it, q)) continue;
+			else row = it.kind == 'note' ? this.noteRow(it) : this.ruleRow(it);
+			row.classList.toggle('pr-in-group', inGroup && it.kind != 'note');
+			rows.push(row);
+			this.rowEls.set(it, row);
 		}
 		// Совсем пусто — добавлять не от чего, поэтому кнопки здесь
 		if (rows.length == 1)
