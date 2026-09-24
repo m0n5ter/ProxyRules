@@ -34,7 +34,9 @@ if (!conf_path || !outdir) {
 }
 
 const RESERVED = { direct: true, block: true };
-const RULE_TYPES = { domain: true, list: true, ip: true, src: true, port: true };
+const RULE_TYPES = { domain: true, list: true, ip: true, src: true, port: true, protocol: true };
+// что распознаёт sniff в sing-box (dns не нужен: DNS перехватывается раньше правил)
+const PROTOCOLS = [ 'bittorrent', 'tls', 'http', 'quic', 'stun', 'dtls', 'ssh', 'rdp', 'ntp' ];
 
 let errors = [];
 function fail(ln, msg) { push(errors, [ ln, msg ]); }
@@ -203,7 +205,7 @@ for (let raw in split(text, '\n')) {
 		for (let part in split(m[1], '&')) {
 			let c = match(trim(part), /^(!?)([a-z]+):(.*)$/);
 			if (!c) { fail(ln, trim(part) == '' ? 'empty condition next to "&"' : `"${trim(part)}" — expected type:value`); continue; }
-			if (!RULE_TYPES[c[2]]) { fail(ln, `unknown condition type "${c[2]}:" (available: domain, list, ip, src, port)`); continue; }
+			if (!RULE_TYPES[c[2]]) { fail(ln, `unknown condition type "${c[2]}:" (available: domain, list, ip, src, port, protocol)`); continue; }
 			let values = filter(split(trim(c[3]), /[[:space:],]+/), (v) => v != '');
 			if (!length(values)) { fail(ln, `empty condition "${c[2]}:"`); continue; }
 			push(conds, { type: c[2], neg: c[1] == '!', values });
@@ -288,6 +290,9 @@ for (let r in rules) {
 				if (!match(v, /^[a-z0-9_]+$/)) fail(r.ln, `list name "${v}": only a-z, 0-9, _`);
 				else if (!used_lists[v]) { used_lists[v] = true; push(list_order, v); }
 			}
+			else if (c.type == 'protocol') {
+				if (!(v in PROTOCOLS)) fail(r.ln, `unknown protocol "${v}" (available: ${join(', ', PROTOCOLS)})`);
+			}
 			else if (c.type == 'port') {
 				if (!parse_port(v)) fail(r.ln, `"${v}": expected a port 1-65535 or a range like 50000-65535`);
 			}
@@ -298,8 +303,15 @@ for (let r in rules) {
 
 	// Правило из одних отрицаний подходит почти всему — пришлось бы гнать через
 	// sing-box весь трафик сети. Для direct это не нужно: direct и так по умолчанию.
-	if (r.target != 'direct' && !length(filter(r.conds, (c) => !c.neg)))
-		fail(r.ln, 'at least one condition without "!" is required — otherwise all traffic would have to go through sing-box');
+	// protocol: виден только в трафике, который уже дошёл до sing-box, поэтому
+	// для перехвата он не годится — нужно ещё какое-то условие.
+	if (r.target != 'direct') {
+		let pos = filter(r.conds, (c) => !c.neg);
+		if (!length(pos))
+			fail(r.ln, 'at least one condition without "!" is required — otherwise all traffic would have to go through sing-box');
+		else if (!length(filter(pos, (c) => c.type != 'protocol')))
+			fail(r.ln, 'protocol: alone works only with target direct — add a src:, ip:, port:, domain: or list: condition');
+	}
 }
 
 // настройки
@@ -370,6 +382,7 @@ function cond_fields(c) {
 	else if (c.type == 'list') o.rule_set = map(c.values, (v) => 'list-' + v);
 	else if (c.type == 'ip') o.ip_cidr = c.values;
 	else if (c.type == 'src') o.source_ip_cidr = c.values;
+	else if (c.type == 'protocol') o.protocol = c.values;
 	else if (c.type == 'port') {
 		let ports = [], ranges = [];
 		for (let v in c.values) {
@@ -421,7 +434,8 @@ for (let r in merged) push(route_rules, route_rule(r));
 // Остальным хватает перехвата по одному положительному условию — условия
 // связаны «И», значит подходящий трафик под него точно попадёт:
 //   domain, list -> fake-ip в DNS (подсети списков ставит в nft watchdog);
-//   иначе src/ip/port -> одно nft-правило со всеми этими условиями сразу.
+//   иначе src/ip/port -> одно nft-правило со всеми этими условиями сразу;
+//   protocol в перехвате не участвует — nft его не видит, его проверит sing-box.
 // DNS не знает, какое устройство спрашивает, поэтому fake-ip домен получает
 // для всех; кому правило не подходит, пойдут дальше по правилам или напрямую.
 //
@@ -430,6 +444,9 @@ for (let r in merged) push(route_rules, route_rule(r));
 // sing-box по src: и тот сам пойдёт «напрямую» — а соединение самого роутера
 // на свой WAN-адрес проброс портов не проходит. Поэтому direct из одних
 // src/ip/port без «!» становится nft-правилом return на своём месте по порядку.
+// А protocol:bittorrent -> direct над src:<устройство> -> TR работает само:
+// трафик устройства приходит в sing-box, sniff узнаёт протокол, и правило direct
+// срабатывает раньше.
 // После первого list: так не делаем: его подсети проверяются в pr_lists, ниже
 // всех этих правил, и return мог бы перебить правило, стоящее выше direct.
 let fake_suffix = [], fake_sets = [];
@@ -439,7 +456,7 @@ let seen_list = false;
 for (let r in merged) {
 	if (r.target == 'direct') {
 		let exact = !seen_list && length(r.conds) &&
-			!length(filter(r.conds, (c) => c.neg || c.type == 'domain' || c.type == 'list'));
+			!length(filter(r.conds, (c) => c.neg || c.type == 'domain' || c.type == 'list' || c.type == 'protocol'));
 		if (exact) {
 			let by = {};
 			for (let c in r.conds) by[c.type] = c.values;
@@ -447,7 +464,7 @@ for (let r in merged) {
 		}
 		continue;
 	}
-	let pos = filter(r.conds, (c) => !c.neg);
+	let pos = filter(r.conds, (c) => !c.neg && c.type != 'protocol');
 	let by = {};
 	for (let c in pos) by[c.type] = c.values;
 

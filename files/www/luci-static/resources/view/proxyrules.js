@@ -26,12 +26,16 @@ const LISTS = [ 'anime', 'block', 'cloudflare', 'cloudfront', 'digitalocean', 'd
 	'google_ai', 'google_meet', 'google_play', 'hdrezka', 'hetzner', 'hodca', 'meta', 'news', 'ovh', 'porn',
 	'roblox', 'russia_inside', 'russia_outside', 'telegram', 'tiktok', 'twitter', 'ukraine_inside', 'youtube' ];
 
+// Как PROTOCOLS в gen.uc
+const PROTOCOLS = [ 'bittorrent', 'tls', 'http', 'quic', 'stun', 'dtls', 'ssh', 'rdp', 'ntp' ];
+
 const PLACEHOLDERS = {
 	domain: 'upwork.com, static-upwork.com',
 	list: 'discord',
 	ip: '203.0.113.0/24',
 	src: '192.168.1.15',
 	port: '443, 50000-65535',
+	protocol: 'bittorrent',
 };
 const RULE_TYPES = Object.keys(PLACEHOLDERS);
 
@@ -243,6 +247,7 @@ const CSS = `
 .pr-tag-ip { background:rgba(230,126,34,.25) }
 .pr-tag-src { background:rgba(39,174,96,.22) }
 .pr-tag-port { background:rgba(128,128,128,.25) }
+.pr-tag-protocol { background:rgba(192,57,43,.2) }
 .pr-neg .pr-tag { text-decoration:line-through }
 .pr-target { display:inline-block; padding:.05em .5em; border-radius:3px; font-weight:bold; overflow-wrap:anywhere; background:rgba(128,128,128,.2) }
 .pr-t-chain { background:rgba(58,123,213,.2) }
@@ -1059,7 +1064,8 @@ return view.extend({
 		const err = E('span', { class: 'pr-err' });
 
 		const renderConds = () => dom.content(box, draft.map((c, i) => {
-			const val = c.type == 'list' ? this.listPicker(c) : E('input', {
+			const val = c.type == 'list' ? this.listPicker(c, LISTS, 'lists')
+				: c.type == 'protocol' ? this.listPicker(c, PROTOCOLS, 'protocols') : E('input', {
 				class: 'cbi-input-text pr-grow', type: 'text', value: c.raw, placeholder: PLACEHOLDERS[c.type],
 				input: () => c.raw = val.value,
 			});
@@ -1115,16 +1121,16 @@ return view.extend({
 	},
 
 	// Заголовок правится прямо в строке таблицы и применяется при каждом вводе; Esc — вернуть как было
-	// Выбор list: — кнопка со списком выбранного, по клику панель с чекбоксами.
+	// Выбор list: и protocol: — кнопка со списком выбранного, по клику панель с чекбоксами.
 	// Имена из файла, которых нет среди известных, тоже показываются (отмеченными).
-	listPicker(c) {
-		const sel = new Set(normalizeValues('list', c.raw));
-		const all = [ ...LISTS, ...[ ...sel ].filter((v) => !LISTS.includes(v)) ];
+	listPicker(c, known, what) {
+		const sel = new Set(normalizeValues(c.type, c.raw));
+		const all = [ ...known, ...[ ...sel ].filter((v) => !known.includes(v)) ];
 		const label = E('span', { class: 'pr-ms-label' });
 		const update = () => {
 			const on = all.filter((v) => sel.has(v));
 			c.raw = on.join(', ');
-			dom.content(label, [ on.length ? on.join(', ') : 'choose lists…' ]);
+			dom.content(label, [ on.length ? on.join(', ') : 'choose ' + what + '…' ]);
 			label.classList.toggle('pr-ms-empty', !on.length);
 		};
 		const panel = E('div', { class: 'pr-ms-panel' }, all.map((v) => E('label', {}, [
@@ -1147,7 +1153,7 @@ return view.extend({
 				}
 			},
 		}, [
-			E('button', { class: 'cbi-input-select pr-ms-btn', type: 'button', title: 'Choose lists',
+			E('button', { class: 'cbi-input-select pr-ms-btn', type: 'button', title: 'Choose ' + what,
 				click: (ev) => { ev.preventDefault(); wrap.classList.contains('pr-ms-open') ? close() : open(); } }, [ label ]),
 			panel,
 		]);

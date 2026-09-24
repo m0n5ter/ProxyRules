@@ -28,6 +28,11 @@
 #    ip:203.0.113.0/24         destination address or subnet
 #    src:192.168.1.15          LAN device (or subnet) — all of its traffic
 #    port:443, 50000-65535     destination port (TCP and UDP)
+#    protocol:bittorrent       recognised by the first packets: bittorrent tls http quic
+#                              stun dtls ssh rdp ntp. Seen only in traffic that already
+#                              goes through a proxy, so on its own — only -> direct
+#                              (put it above the rules it should override); with other
+#                              targets add another condition: src:… & protocol:quic -> block
 #
 #    &   — "and": src:192.168.1.15 & domain:aaa.com -> DE       only aaa.com from this device
 #    !   — "not": !src:192.168.1.15 & domain:bbb.com -> block   everyone except this device
@@ -64,6 +69,9 @@ NL-FIRST = NL,DE
 NL-ONLY  = NL
 
 # ── Rules ───────────────────────────────────────────────────────────────────
+
+# Torrents — never through the proxy, from any device (even those sent via src: below)
+protocol:bittorrent                                                 -> direct
 
 # Your own servers — always direct, from any device.
 # Comes first so that src: and list:hetzner/ovh/… below don't catch it.

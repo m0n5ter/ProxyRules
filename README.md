@@ -7,6 +7,7 @@ TR   = vless://…
 DE   = vless://…
 AUTO = DE,TR                       # первое живое по порядку
 
+protocol:bittorrent                -> direct
 domain:upwork.com                  -> TR
 list:youtube, discord              -> AUTO
 src:192.168.1.15                   -> AUTO
