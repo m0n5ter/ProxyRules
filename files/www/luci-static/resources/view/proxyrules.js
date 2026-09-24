@@ -206,6 +206,7 @@ const CSS = `
 .pr-row.pr-note { display:flex; gap:.8em; padding-top:1.1em; border-bottom-color:rgba(128,128,128,.45) }
 .pr-note .pr-note-text { flex:1; font-weight:bold; white-space:pre-wrap }
 .pr-note .pr-note-text .pr-sub { font-weight:normal; opacity:.7 }
+.pr-note .pr-note-input { flex:1; min-width:0; font:inherit; font-weight:bold; resize:none; overflow:hidden; line-height:1.5 }
 .pr-handle { cursor:grab; opacity:.35; user-select:none; text-align:center; letter-spacing:-.2em }
 .pr-handle:hover { opacity:.8 }
 .pr-and { opacity:.55; font-size:85%; margin:0 .3em }
@@ -372,7 +373,7 @@ return view.extend({
 			input: () => this.updateDirty(),
 		}, [ this.savedText ]);
 
-		this.buildQuickAdd();
+		this.listsDatalist = E('datalist', { id: 'proxyrules-lists' }, LISTS.map((l) => E('option', { value: l })));
 		this.filterInput = E('input', {
 			class: 'cbi-input-text pr-filter', type: 'search', placeholder: 'Filter rules…',
 			input: () => this.renderRuleList(),
@@ -463,8 +464,7 @@ return view.extend({
 		}));
 
 		if (this.tab == 'rules') {
-			this.fillTargets();
-			dom.content(this.body, [ this.quickAdd, ...this.renderRulesTab() ]);
+			dom.content(this.body, this.renderRulesTab());
 			this.renderRuleList();
 		}
 		else if (this.tab == 'conns') dom.content(this.body, this.renderConnsTab());
@@ -498,6 +498,7 @@ return view.extend({
 		if (!this.closeEditor(true)) return;
 		fn();
 		this.renderAll();
+		if (this.flash) this.reveal(this.rowEls && this.rowEls.get(this.flash));
 	},
 
 	edit(it) {
@@ -506,20 +507,58 @@ return view.extend({
 		if (!this.closeEditor(true)) return;
 		this.editing = it;
 		this.renderAll();
-		// Закрытый выше редактор и фокус сдвигают страницу — редактор должен встать на место строки
+		// Закрытый выше редактор сдвигает список — редактор встаёт на место строки;
+		// прокрутка — только если он не виден целиком
 		this.keepAt(it, top);
+		this.reveal(this.editorNode);
 		const f = this.editorNode && this.editorNode.querySelector('input, textarea, select');
 		if (f) f.focus({ preventScroll: true });
 	},
 
 	rowTop(it) {
 		const el = this.rowEls && this.rowEls.get(it);
-		return el && el.isConnected ? el.getBoundingClientRect().top : null;
+		// верх места под строку вместе с внешним отступом — у редактора он есть, у строки нет
+		return el && el.isConnected ? el.getBoundingClientRect().top - (parseFloat(getComputedStyle(el).marginTop) || 0) : null;
+	},
+
+	// Что прокручивается: в некоторых темах LuCI это не окно, а контейнер страницы
+	scroller() {
+		for (let el = this.ruleList.parentElement; el && el != document.body; el = el.parentElement) {
+			const oy = getComputedStyle(el).overflowY;
+			if ((oy == 'auto' || oy == 'scroll') && el.scrollHeight > el.clientHeight) return el;
+		}
+		return document.scrollingElement || document.documentElement;
+	},
+
+	// Видимая область с учётом закреплённой шапки темы
+	viewport(sc) {
+		let top = 0, bottom = window.innerHeight;
+		if (sc != document.scrollingElement && sc != document.documentElement) {
+			const r = sc.getBoundingClientRect();
+			top = Math.max(top, r.top);
+			bottom = Math.min(bottom, r.bottom);
+		}
+		const hdr = document.querySelector('header');
+		if (hdr && /fixed|sticky/.test(getComputedStyle(hdr).position)) {
+			const r = hdr.getBoundingClientRect();
+			if (r.top <= top + 1 && r.bottom > top) top = r.bottom;
+		}
+		return { top, bottom };
 	},
 
 	keepAt(it, top) {
 		const now = this.rowTop(it);
-		if (top != null && now != null) window.scrollBy(0, now - top);
+		if (top != null && now != null && Math.abs(now - top) > 1) this.scroller().scrollBy(0, now - top);
+	},
+
+	// Прокрутить минимально, чтобы el был виден целиком (если выше экрана — важнее верх)
+	reveal(el) {
+		if (!el || !el.isConnected) return;
+		const sc = this.scroller(), v = this.viewport(sc), r = el.getBoundingClientRect(), m = 8;
+		let d = 0;
+		if (r.bottom > v.bottom - m) d = r.bottom - v.bottom + m;
+		if (r.top - d < v.top + m) d = r.top - v.top - m;
+		if (Math.abs(d) > 1) sc.scrollBy(0, d);
 	},
 
 	closeEditor(save) {
@@ -635,9 +674,11 @@ return view.extend({
 
 	renderRulesTab() {
 		return [
+			this.listsDatalist,
 			E('div', { class: 'pr-toolbar' }, [
 				this.filterInput,
 				E('span', { style: 'opacity:.65;font-size:90%;flex:1' }, 'Checked top to bottom, the first match wins. Drag ⋮⋮ or use ↑ ↓ to reorder; double-click a rule to edit.'),
+				btn('+ Rule', 'Add a rule after the last one', () => this.addRule(), 'cbi-button-add'),
 				btn('+ Group', 'Add a heading for a group of rules', () => this.addGroup(), ''),
 			]),
 			this.ruleList,
@@ -671,13 +712,7 @@ return view.extend({
 		if (rows.length == 1)
 			rows.push(E('div', { class: 'pr-empty' }, q ? 'Nothing matches the filter.' : 'No rules yet — add one above.'));
 		dom.content(this.ruleList, rows);
-
-		const fl = this.ruleList.querySelector('.pr-flash');
-		if (fl) {
-			this.clearFlash();
-			const r = fl.getBoundingClientRect();
-			if (r.top < 0 || r.bottom > window.innerHeight) fl.scrollIntoView({ block: 'center' });
-		}
+		if (this.ruleList.querySelector('.pr-flash')) this.clearFlash();
 	},
 
 	// Подсветка держится, пока идёт анимация, — переживает перерисовку после проверки
@@ -903,22 +938,43 @@ return view.extend({
 		]);
 	},
 
+	// Заголовок правится прямо в строке таблицы и применяется при каждом вводе; Esc — вернуть как было
 	noteEditor(it) {
-		const text = E('textarea', { class: 'cbi-input-textarea', rows: Math.max(2, it.lines.length + 1), style: 'width:100%;font-family:monospace' },
-			[ it.text != null ? it.text : noteText(it) ]);
+		const orig = { text: it.text, dirty: it.dirty };
+		const start = it.text != null ? it.text : noteText(it);
+		const fit = () => text.rows = Math.max(1, text.value.split('\n').length);
+		const text = E('textarea', {
+			class: 'cbi-input-textarea pr-note-input', spellcheck: 'false', placeholder: 'Group heading',
+			title: 'Enter — done, Shift+Enter — new line, Esc — undo',
+			input: () => {
+				fit();
+				const t = text.value.replace(/\s+$/, '');
+				Object.assign(it, t == start && !orig.dirty ? { text: orig.text, dirty: false } : { text: t, dirty: true });
+				this.updateDirty();
+			},
+			keydown: (ev) => {
+				if (ev.key == 'Escape') { ev.preventDefault(); this.finishEdit(false); }
+				else if (ev.key == 'Enter' && !ev.shiftKey) { ev.preventDefault(); this.finishEdit(true); }
+			},
+		}, [ start ]);
+		fit();
 		this.pending = {
 			apply: () => {
-				const t = text.value.replace(/\s+$/, '');
-				if (t == '') { this.items.splice(this.items.indexOf(it), 1); return true; }
-				Object.assign(it, { text: t, dirty: true, isNew: false });
+				if (text.value.trim() == '') this.items.splice(this.items.indexOf(it), 1);
+				it.isNew = false;
 				return true;
 			},
-			cancel: () => { if (it.isNew) this.items.splice(this.items.indexOf(it), 1); },
+			cancel: () => {
+				if (it.isNew) this.items.splice(this.items.indexOf(it), 1);
+				else Object.assign(it, orig);
+			},
 		};
-		return E('div', { class: 'pr-edit', keydown: (ev) => this.editorKeys(ev) }, [
-			E('div', { style: 'opacity:.7;margin-bottom:.3em' }, 'Group heading / comment (each line becomes a # line):'),
+		return E('div', { class: 'pr-row pr-note' }, [
 			text,
-			this.editorButtons(),
+			E('div', { class: 'pr-actions', style: 'opacity:1' }, [
+				btn('✓', 'Done (Enter)', () => this.finishEdit(true)),
+				btn('↶', 'Undo changes (Esc)', () => this.finishEdit(false)),
+			]),
 		]);
 	},
 
@@ -942,81 +998,17 @@ return view.extend({
 		]);
 	},
 
-	// ─────────────────────────────────────────── быстрое добавление
-
-	buildQuickAdd() {
-		this.qaKind = E('select', { class: 'cbi-input-select', change: () => this.updateQuickAddHints() },
-			RULE_TYPES.map((k) => E('option', { value: k }, k + ':')));
-		this.qaValue = E('input', {
-			class: 'cbi-input-text', type: 'text', style: 'flex:1 1 16em;min-width:10em', list: 'proxyrules-lists',
-			keydown: (ev) => { if (ev.key == 'Enter') { ev.preventDefault(); this.handleQuickAdd(false); } },
-		});
-		this.qaTarget = E('select', { class: 'cbi-input-select' });
-		this.qaPos = E('select', { class: 'cbi-input-select' }, [
-			E('option', { value: 'bottom' }, 'after the last rule'),
-			E('option', { value: 'top' }, 'before the first rule'),
-		]);
-		this.qaComment = E('input', { class: 'cbi-input-text', type: 'text', style: 'flex:0 1 12em;min-width:8em', placeholder: 'comment (optional)' });
-		this.qaDatalist = E('datalist', { id: 'proxyrules-qa-lists' });
-
-		this.quickAdd = E('div', {}, [
-			E('datalist', { id: 'proxyrules-lists' }, LISTS.map((l) => E('option', { value: l }))),
-			E('h3', 'Quick add'),
-			E('p', { class: 'cbi-section-descr' },
-				'Several values — separated by commas or spaces; a pasted URL is reduced to its domain.'),
-			E('div', { style: 'display:flex;flex-wrap:wrap;gap:.5em;align-items:center' }, [
-				this.qaKind, this.qaValue, this.qaDatalist,
-				E('span', '→'), this.qaTarget, this.qaPos, this.qaComment,
-				E('button', { class: 'btn cbi-button cbi-button-add', click: ui.createHandlerFn(this, 'handleQuickAdd', false) }, 'Add'),
-				E('button', { class: 'btn cbi-button cbi-button-apply', click: ui.createHandlerFn(this, 'handleQuickAdd', true) }, 'Add & Apply'),
-			]),
-			E('h3', { style: 'margin-top:1.5em' }, 'Rules'),
-		]);
-		this.updateQuickAddHints();
-	},
-
-	updateQuickAddHints() {
-		const kind = this.qaKind.value;
-		this.qaValue.placeholder = PLACEHOLDERS[kind];
-		this.qaValue.setAttribute('list', kind == 'list' ? 'proxyrules-lists' : 'proxyrules-qa-lists');
-	},
-
-	fillTargets() {
-		const prev = this.qaTarget.value;
-		const names = this.targetNames();
-		dom.content(this.qaTarget, names.map((n) => E('option', { value: n }, [ n ])));
-		this.qaTarget.value = names.includes(prev) ? prev : (names.includes('AUTO') ? 'AUTO' : names[0]);
-	},
-
-	handleQuickAdd(apply) {
-		const kind = this.qaKind.value;
-		const values = normalizeValues(kind, this.qaValue.value);
-		if (!values.length) {
-			dom.content(this.result, E('p', { class: 'alert-message warning' }, 'Enter a value to add.'));
-			this.qaValue.focus();
-			return Promise.resolve();
-		}
-		if (!this.closeEditor(true)) return Promise.resolve();
-
-		const it = { kind: 'rule', lines: [], conds: [ { neg: false, type: kind, values } ], target: this.qaTarget.value,
-			comment: this.qaComment.value.replace(/\s+/g, ' ').trim(), dirty: true };
-
-		// Рядом с существующими правилами, а не в самый конец (там могут быть комментарии)
+	// Новое правило — после последнего (в самом конце файла могут быть комментарии)
+	addRule() {
+		if (!this.closeEditor(true)) return;
 		const rules = this.items.map((x, i) => x.kind == 'rule' ? i : -1).filter((i) => i >= 0);
-		let at;
-		if (!rules.length) {
-			at = this.items.length;
-			while (at > 0 && this.items[at - 1].kind == 'blank') at--;
-		}
-		else at = this.qaPos.value == 'top' ? rules[0] : rules[rules.length - 1] + 1;
+		let at = rules.length ? rules[rules.length - 1] + 1 : this.items.length;
+		if (!rules.length) while (at > 0 && this.items[at - 1].kind == 'blank') at--;
+		const prev = this.items[at - 1];
+		const it = this.newRule(prev && prev.kind == 'rule' ? prev.target : '');
 		this.items.splice(at, 0, it);
-
-		this.flash = it;
 		this.filterInput.value = '';
-		this.qaValue.value = '';
-		this.qaComment.value = '';
-		this.renderAll();
-		return apply ? this.handleApply() : this.handleCheck();
+		this.edit(it);
 	},
 
 	// ─────────────────────────────────────────── соединения и цепочки
