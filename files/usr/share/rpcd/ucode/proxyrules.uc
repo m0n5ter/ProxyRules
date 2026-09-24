@@ -9,7 +9,6 @@ const RUN = '/var/run/proxyrules';
 const INIT = '/etc/init.d/proxyrules';
 const CHECK_DIR = '/tmp/proxyrules-check';
 const REPO = 'm0n5ter/ProxyRules';
-const LATEST_CACHE = '/tmp/proxyrules-latest.json';
 const UPGRADE_SH = '/tmp/proxyrules-install.sh';
 const UPGRADE_LOG = '/tmp/proxyrules-upgrade.log';
 
@@ -70,26 +69,14 @@ function newer(a, b) {
 	return false;
 }
 
-// Последний релиз на GitHub. Ответ кешируется на 6 часов (ошибка — на 10 минут),
-// чтобы не упираться в лимит API без токена.
-function latest(force) {
-	let c = null;
-	try { c = json(readfile(LATEST_CACHE)); } catch (e) { }
-	if (!force && c && time() < c.expires) return c;
-
-	c = { expires: time() + 6 * 3600 };
+// Последний релиз на GitHub (проверяется только по кнопке на странице)
+function latest() {
 	let r = sh(`curl -fsS -m 15 -H 'Accept: application/vnd.github+json' https://api.github.com/repos/${REPO}/releases/latest`);
 	let rel = null;
 	try { rel = r.rc == 0 ? json(r.out) : null; } catch (e) { }
-	if (type(rel?.tag_name) == 'string') {
-		c.tag = rel.tag_name;
-		c.url = rel.html_url;
-	} else {
-		c.error = r.out || 'unexpected answer from GitHub';
-		c.expires = time() + 600;
-	}
-	writefile(LATEST_CACHE, sprintf('%J', c));
-	return c;
+	if (type(rel?.tag_name) == 'string')
+		return { tag: rel.tag_name, url: rel.html_url };
+	return { error: r.out || 'unexpected answer from GitHub' };
 }
 
 // Обновление идёт отдельным процессом (setsid): install.sh перезагружает rpcd
@@ -162,9 +149,8 @@ const methods = {
 	},
 
 	update: {
-		args: { force: false },
-		call: function(req) {
-			let l = latest(!!req.args?.force), cur = version();
+		call: function() {
+			let l = latest(), cur = version();
 			return { current: cur, latest: l.tag, url: l.url, error: l.error, newer: l.tag ? newer(l.tag, cur) : false };
 		}
 	},

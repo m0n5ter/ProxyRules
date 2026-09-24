@@ -10,7 +10,7 @@ const callCheck = rpc.declare({ object: 'proxyrules', method: 'check', params: [
 const callSave = rpc.declare({ object: 'proxyrules', method: 'save', params: [ 'content' ] });
 const callService = rpc.declare({ object: 'proxyrules', method: 'service', params: [ 'action' ] });
 const callStatus = rpc.declare({ object: 'proxyrules', method: 'status' });
-const callUpdate = rpc.declare({ object: 'proxyrules', method: 'update', params: [ 'force' ] });
+const callUpdate = rpc.declare({ object: 'proxyrules', method: 'update' });
 const callUpgrade = rpc.declare({ object: 'proxyrules', method: 'upgrade', params: [ 'tag' ] });
 
 function ago(ts) {
@@ -336,16 +336,18 @@ return view.extend({
 			return E('div', {}, out);
 		}
 
-		if (!u)
-			line.push(E('span', { style: 'opacity:.6' }, ' · checking for updates…'));
-		else if (u.newer)
+		// Релизы проверяются только по кнопке
+		const check = (label) => E('button', { class: 'btn cbi-button', click: ui.createHandlerFn(this, 'handleCheckUpdate') }, label);
+		if (u && u.newer)
 			line.push(' · ', E('strong', { style: 'color:#2a2' }, `${u.latest.replace(/^v/, '')} is available`), ' ',
 				u.url ? E('a', { href: u.url, target: '_blank', rel: 'noopener' }, 'release notes') : '', ' ',
 				E('button', { class: 'btn cbi-button cbi-button-action', click: ui.createHandlerFn(this, 'handleUpgrade', u.latest) }, 'Update'));
-		else {
-			line.push(E('span', { style: 'opacity:.6' }, u.error ? ' · could not check for updates' : ' · latest'), ' ',
-				E('a', { href: '#', click: ui.createHandlerFn(this, 'handleCheckUpdate') }, 'check now'));
-		}
+		else if (u)
+			line.push(u.error
+				? E('span', { style: 'color:#d33', title: u.error }, ' · could not check for updates ')
+				: E('span', { style: 'opacity:.6' }, ' · this is the latest release '), check('Check again'));
+		else
+			line.push(' ', check('Check for updates'));
 		return E('p', {}, line);
 	},
 
@@ -452,7 +454,6 @@ return view.extend({
 		this.loadedVersion = st.version;
 		this.update = null;
 		this.statusNode = E('div', {}, this.renderStatus(st));
-		callUpdate(false).then((u) => { this.update = u; return this.refreshStatus(); }).catch(() => {});
 		poll.add(() => this.refreshStatus(), 5);
 
 		this.textarea = E('textarea', {
@@ -1542,12 +1543,8 @@ return view.extend({
 		this.renderAll();
 	},
 
-	handleCheckUpdate(ev) {
-		ev.preventDefault();
-		this.update = null;
-		return this.refreshStatus()
-			.then(() => callUpdate(true))
-			.then((u) => { this.update = u; return this.refreshStatus(); });
+	handleCheckUpdate() {
+		return callUpdate().then((u) => { this.update = u; return this.refreshStatus(); });
 	},
 
 	handleUpgrade(tag) {
