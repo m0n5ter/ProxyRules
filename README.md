@@ -1,39 +1,43 @@
 # ProxyRules
 
-Маршрутизация трафика на роутере OpenWrt через [sing-box](https://sing-box.sagernet.org/) по одному файлу правил: какие домены, адреса и устройства идут через какое соединение (VLESS/REALITY или интерфейс вроде AmneziaWG/WireGuard), с автоматическим переключением на живое соединение и страницей в LuCI.
+Traffic routing on an OpenWrt router through [sing-box](https://sing-box.sagernet.org/), driven by a single rules file: which domains, addresses and devices go through which connection (VLESS/REALITY or an interface such as AmneziaWG/WireGuard), with automatic failover to a live connection and a LuCI page.
 
 ```
-TR   = vless://…
 DE   = vless://…
-AUTO = DE,TR                       # первое живое по порядку
+NL   = vless://…
+AUTO = DE,NL                       # the first live one, in order
 
 protocol:bittorrent                -> direct
-domain:upwork.com                  -> TR
+domain:example.com                 -> NL
 list:youtube, discord              -> AUTO
-src:192.168.1.15                   -> AUTO
+src:192.168.1.50                   -> AUTO
 ```
 
-Полный формат с комментариями — в [files/etc/proxyrules.conf.example](files/etc/proxyrules.conf.example).
+The full format, with comments, is in [files/etc/proxyrules.conf.example](files/etc/proxyrules.conf.example).
 
-## Установка
+## Installation
 
-OpenWrt 24.10 или новее. В SSH на роутере:
+OpenWrt 24.10 or newer. Over SSH on the router:
 
 ```sh
 wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install.sh | sh
 ```
 
-Установщик сам ставит недостающие пакеты (`sing-box`, `ucode`, `jq`, `curl`, `ip-full`, `kmod-nft-tproxy` и др.) и страницу LuCI. Если `/etc/proxyrules.conf` ещё нет, туда кладётся пример.
+The installer adds any missing packages (`sing-box`, `ucode`, `jq`, `curl`, `ip-full`, `kmod-nft-tproxy` and others) and the LuCI page. If there is no `/etc/proxyrules.conf` yet, the example is put there.
 
-Дальше: **LuCI → Services → Proxy Rules** — впишите свои соединения и правила, сохраните и нажмите **Start**.
+Next: **LuCI → Services → Proxy Rules** — enter your connections and rules, save, and press **Start**.
 
-## Обновление
+## Updating
 
-На вкладке **Status** видна установленная версия и кнопка **Check for updates**. Если на GitHub есть релиз новее, рядом появляется кнопка **Update** — она скачивает релиз, ставит его и перезапускает сервис. Настройки (`/etc/proxyrules.conf`) не меняются.
+The **Status** tab shows the installed version and a **Check for updates** button. If GitHub has a newer release, an **Update** button appears next to it — it downloads the release, installs it and restarts the service. Your settings (`/etc/proxyrules.conf`) are left unchanged.
 
-То же из SSH — повторить команду установки. Конкретная версия: `sh install.sh v1.0.0`.
+Over SSH, just run the install command again. A specific version:
 
-## Удаление
+```sh
+wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install.sh | sh -s v1.0.3
+```
+
+## Removal
 
 ```sh
 /etc/init.d/proxyrules stop; /etc/init.d/proxyrules disable
@@ -43,10 +47,10 @@ rm -rf /etc/init.d/proxyrules /usr/share/proxyrules /usr/share/rpcd/ucode/proxyr
 /etc/init.d/rpcd reload
 ```
 
-`/etc/proxyrules.conf` и `/etc/proxyrules/` остаются — удалите вручную, если не нужны.
+`/etc/proxyrules.conf` and `/etc/proxyrules/` are kept — delete them by hand if you don't need them.
 
-## Разработка
+## Development
 
-`router.sh` ставит рабочую копию на роутер по SSH (`./router.sh update`, `start`, `stop`, …) — описание в начале файла.
+`router.sh` installs the working copy on the router over SSH (`./router.sh update`, `start`, `stop`, …) — see the top of the file.
 
-Релиз: `git tag v1.2.0 && git push origin v1.2.0` — GitHub Actions соберёт `proxyrules.tar.gz` (`tools/build.sh`) и опубликует его вместе с `install.sh`.
+Release: `git tag v1.2.0 && git push origin v1.2.0` — GitHub Actions builds `proxyrules.tar.gz` (`tools/build.sh`) and publishes it together with `install.sh`.
