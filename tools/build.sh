@@ -39,6 +39,7 @@ sed -i 's|"path": "proxyrules"|"path": "proxyrules/'"$hash"'"|' "$stage/$MENU"
 grep -q "proxyrules/$hash" "$stage/$MENU" || { echo "failed to rewrite the path in $MENU" >&2; exit 1; }
 chmod 755 "$stage/etc/init.d/proxyrules"
 echo "$VERSION" > "$stage/usr/share/proxyrules/version"
+cp install.sh "$stage/usr/share/proxyrules/install.sh"
 
 # files only, no directories: otherwise unpacking into / changes the modes of /etc, /usr…
 (cd "$stage" && find etc usr www -type f | sort) |

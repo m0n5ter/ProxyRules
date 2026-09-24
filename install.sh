@@ -8,6 +8,12 @@
 #   sh install.sh --file X.tar.gz  an archive from tools/build.sh (this is how router.sh update installs)
 #   --no-restart                 do not restart a running service after the update
 #
+#   sh install.sh uninstall      stop and remove proxyrules; the config is kept
+#   sh install.sh uninstall --purge   also remove /etc/proxyrules.conf and /etc/proxyrules/
+#
+# A copy of this script is installed as /usr/share/proxyrules/install.sh,
+# so removal works without internet access.
+#
 # Installs missing packages (sing-box etc.), the proxyrules files and the LuCI page.
 # Leaves /etc/proxyrules.conf alone; if it is missing, puts the example there (except with --file).
 
@@ -15,11 +21,15 @@ REPO=m0n5ter/ProxyRules
 TAG=
 FILE=
 RESTART=1
+UNINSTALL=
+PURGE=
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--file) FILE=$2; shift ;;
 	--no-restart) RESTART= ;;
+	uninstall|--uninstall) UNINSTALL=1 ;;
+	--purge) PURGE=1 ;;
 	v[0-9]*) TAG=$1 ;;
 	*) echo "unknown argument: $1" >&2; exit 1 ;;
 	esac
@@ -36,6 +46,35 @@ fetch() {
 	if command -v curl >/dev/null; then curl -fsSL -m 120 -o "$2" "$1"
 	else wget -q -T 120 -O "$2" "$1"; fi
 }
+
+# ── Removal ─────────────────────────────────────────────────────────────────
+if [ -n "$UNINSTALL" ]; then
+	# stop restores the original dnsmasq settings (saved in /etc/proxyrules)
+	if [ -x /etc/init.d/proxyrules ]; then
+		say "stopping the service"
+		/etc/init.d/proxyrules stop >/dev/null 2>&1
+		/etc/init.d/proxyrules disable
+	fi
+	rm -f /etc/init.d/proxyrules /etc/proxyrules.conf.example \
+		/usr/share/rpcd/ucode/proxyrules.uc /usr/share/rpcd/acl.d/luci-app-proxyrules.json \
+		/usr/share/luci/menu.d/luci-app-proxyrules.json /www/luci-static/resources/view/proxyrules.js \
+		/tmp/proxyrules-upgrade.log /tmp/proxyrules-install.sh
+	# only our own files: anything else in /usr/share/proxyrules (backups etc.) stays
+	rm -f /usr/share/proxyrules/gen.uc /usr/share/proxyrules/watchdog.uc \
+		/usr/share/proxyrules/version /usr/share/proxyrules/install.sh
+	rmdir /usr/share/proxyrules 2>/dev/null
+	rm -rf /var/run/proxyrules /www/luci-static/resources/view/proxyrules \
+		/tmp/luci-indexcache* /tmp/luci-modulecache
+	/etc/init.d/rpcd reload
+	if [ -n "$PURGE" ]; then
+		rm -rf /etc/proxyrules.conf /etc/proxyrules
+		say "removed, including /etc/proxyrules.conf"
+	else
+		say "removed; /etc/proxyrules.conf and /etc/proxyrules/ are kept (uninstall --purge removes them)"
+	fi
+	say "packages installed for proxyrules (sing-box etc.) are left in place"
+	exit 0
+fi
 
 # ── Packages ────────────────────────────────────────────────────────────────
 # package:what to check (a command or a file)

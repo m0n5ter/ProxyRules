@@ -90,15 +90,8 @@ stop)
 	;;
 
 uninstall)
-	stop_service
-	remote "
-		set -e
-		rm -f /etc/init.d/proxyrules /etc/proxyrules.conf.example /usr/share/rpcd/ucode/proxyrules.uc \
-			/usr/share/rpcd/acl.d/luci-app-proxyrules.json /usr/share/luci/menu.d/luci-app-proxyrules.json
-		rm -rf /usr/share/proxyrules /var/run/proxyrules /www/luci-static/resources/view/proxyrules \
-			/tmp/luci-indexcache* /tmp/luci-modulecache
-		/etc/init.d/rpcd reload
-		echo 'removed; /etc/proxyrules.conf and /etc/proxyrules/ are kept'"
+	remote 'cat > /tmp/proxyrules-uninstall.sh && sh -n /tmp/proxyrules-uninstall.sh' < install.sh
+	remote 'sh /tmp/proxyrules-uninstall.sh uninstall; rc=$?; rm -f /tmp/proxyrules-uninstall.sh; exit $rc'
 	;;
 
 *)
