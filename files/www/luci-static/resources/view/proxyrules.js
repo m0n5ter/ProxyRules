@@ -106,7 +106,9 @@ function parseDoc(text) {
 	return items;
 }
 
+// Текст заголовка: изменённый — из it.text, иначе из исходных строк файла
 function noteText(it) {
+	if (it.dirty && it.text != null) return it.text;
 	return it.lines.map((l) => l.replace(/^\s*#\s?/, '')).join('\n');
 }
 
@@ -688,7 +690,7 @@ return view.extend({
 	matches(it, q) {
 		if (it.kind == 'rule')
 			return (condsText(it.conds) + ' ' + it.target + ' ' + it.comment).toLowerCase().includes(q);
-		return it.lines.join('\n').toLowerCase().includes(q);
+		return itemLines(it).join('\n').toLowerCase().includes(q);
 	},
 
 	renderRuleList() {
@@ -941,7 +943,7 @@ return view.extend({
 	// Заголовок правится прямо в строке таблицы и применяется при каждом вводе; Esc — вернуть как было
 	noteEditor(it) {
 		const orig = { text: it.text, dirty: it.dirty };
-		const start = it.text != null ? it.text : noteText(it);
+		const start = noteText(it);
 		const fit = () => text.rows = Math.max(1, text.value.split('\n').length);
 		const text = E('textarea', {
 			class: 'cbi-input-textarea pr-note-input', spellcheck: 'false', placeholder: 'Group heading',
