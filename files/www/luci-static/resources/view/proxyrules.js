@@ -195,7 +195,14 @@ function btn(label, title, fn, cls) {
 }
 
 const CSS = `
-.pr-tabs { margin-bottom: 0 }
+/* одинаковый отступ под вкладками на всех вкладках: верхний отступ первого элемента содержимого убран */
+.pr-tabs { margin-bottom:1em !important }
+.pr-body > :first-child, .pr-body > :first-child > :first-child { margin-top:0 !important }
+/* панель кнопок: тема задаёт её элементам float и разные отступы — здесь flex с равными промежутками */
+.pr-bar { display:flex !important; flex-wrap:wrap; gap:.5em; align-items:center; justify-content:flex-end }
+.pr-bar > * { float:none !important; margin:0 !important }
+.pr-bar > .pr-dirty { margin-right:auto !important }
+.pr-hidden { display:none !important }
 .pr-toolbar { display:flex; flex-wrap:wrap; gap:.5em; align-items:center; margin:.8em 0 }
 .pr-toolbar .pr-filter { flex:0 1 20em; min-width:10em }
 .pr-list { margin:.3em 0 1em }
@@ -274,7 +281,7 @@ const CSS = `
 .pr-ms-panel input { margin:0 }
 .pr-chip { display:inline-flex; align-items:center; gap:.2em; padding:.1em .2em .1em .5em; margin:.15em; border-radius:3px; background:rgba(58,123,213,.18) }
 .pr-chip .btn { padding:0 .35em !important; min-width:0; line-height:1.5 }
-.pr-dirty { color:#e67e22; font-weight:bold; margin-right:auto }
+.pr-dirty { color:#e67e22; font-weight:bold; line-height:1 }
 .pr-empty { padding:1em; opacity:.6 }
 @media (max-width: 800px) {
 	/* узко: всё в одну колонку под ручкой, кнопки — строкой под правилом */
@@ -413,12 +420,12 @@ return view.extend({
 		this.ruleList = E('div', { class: 'pr-list pr-rules' });
 
 		this.tabsNode = E('ul', { class: 'cbi-tabmenu pr-tabs' });
-		this.body = E('div');
+		this.body = E('div', { class: 'pr-body' });
 		this.result = E('div');
 		this.dirtyNode = E('span', { class: 'pr-dirty' });
 		this.revertBtn = E('button', { class: 'btn cbi-button cbi-button-reset', click: ui.createHandlerFn(this, 'handleRevert') }, 'Revert');
 
-		this.actionsNode = E('div', { class: 'cbi-page-actions', style: 'display:flex;flex-wrap:wrap;gap:.4em;align-items:center;justify-content:flex-end' }, [
+		this.actionsNode = E('div', { class: 'cbi-page-actions pr-bar' }, [
 			this.dirtyNode,
 			this.revertBtn,
 			E('button', { class: 'btn cbi-button', title: 'Ctrl+S', click: ui.createHandlerFn(this, 'handleCheck') }, 'Check'),
@@ -509,7 +516,8 @@ return view.extend({
 			this.textarea,
 		]);
 		// Проверка и сохранение относятся к файлу — на вкладке статуса их нет
-		this.actionsNode.style.display = this.result.style.display = this.tab == 'status' ? 'none' : '';
+		this.actionsNode.classList.toggle('pr-hidden', this.tab == 'status');
+		this.result.classList.toggle('pr-hidden', this.tab == 'status');
 		this.updateDirty();
 	},
 
