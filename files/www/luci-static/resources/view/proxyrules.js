@@ -199,7 +199,9 @@ const CSS = `
 .pr-tabs { margin-bottom:1em !important }
 .pr-body > :first-child, .pr-body > :first-child > :first-child { margin-top:0 !important }
 /* панель кнопок: тема задаёт её элементам float и разные отступы — здесь flex с равными промежутками */
-.pr-bar { display:flex !important; flex-wrap:wrap; gap:.5em; align-items:center; justify-content:flex-end }
+.pr-bar { display:flex !important; flex-wrap:wrap; gap:.5em; align-items:center; justify-content:flex-end; margin-top:1em !important }
+/* промежуток перед панелью кнопок одинаковый на всех вкладках: его задаёт только панель */
+.pr-body > :last-child { margin-bottom:0 !important }
 .pr-bar > * { float:none !important; margin:0 !important }
 .pr-bar > .pr-dirty { margin-right:auto !important }
 .pr-hidden { display:none !important }
