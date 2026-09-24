@@ -1,15 +1,15 @@
 #!/bin/sh
-# Установка и обновление proxyrules на роутере OpenWrt.
+# Installs and updates proxyrules on an OpenWrt router.
 #
 #   wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install.sh | sh
 #
-#   sh install.sh                последний релиз
-#   sh install.sh v1.2.0         конкретный релиз
-#   sh install.sh --file X.tar.gz  архив из tools/build.sh (так ставит router.sh update)
-#   --no-restart                 не перезапускать работающий сервис после обновления
+#   sh install.sh                the latest release
+#   sh install.sh v1.2.0         a specific release
+#   sh install.sh --file X.tar.gz  an archive from tools/build.sh (this is how router.sh update installs)
+#   --no-restart                 do not restart a running service after the update
 #
-# Ставит недостающие пакеты (sing-box и др.), файлы proxyrules и страницу LuCI.
-# /etc/proxyrules.conf не трогает; если его нет — кладёт туда пример (кроме --file).
+# Installs missing packages (sing-box etc.), the proxyrules files and the LuCI page.
+# Leaves /etc/proxyrules.conf alone; if it is missing, puts the example there (except with --file).
 
 REPO=m0n5ter/ProxyRules
 TAG=
@@ -37,8 +37,8 @@ fetch() {
 	else wget -q -T 120 -O "$2" "$1"; fi
 }
 
-# ── Пакеты ──────────────────────────────────────────────────────────────────
-# пакет:что проверить (команда или файл)
+# ── Packages ────────────────────────────────────────────────────────────────
+# package:what to check (a command or a file)
 DEPS="
 sing-box:sing-box
 ucode:ucode
@@ -72,7 +72,7 @@ if [ -n "$missing" ]; then
 	fi
 fi
 
-# ── Архив ───────────────────────────────────────────────────────────────────
+# ── Archive ─────────────────────────────────────────────────────────────────
 TMP=/tmp/proxyrules-install
 rm -rf "$TMP"
 mkdir -p "$TMP"
@@ -91,14 +91,14 @@ tar -C "$TMP/root" -xzf "$TMP/p.tar.gz" || die "the archive is damaged"
 [ -f "$TMP/root/usr/share/proxyrules/version" ] || die "the archive does not contain proxyrules"
 VERSION=$(cat "$TMP/root/usr/share/proxyrules/version")
 
-# ── Установка ───────────────────────────────────────────────────────────────
+# ── Install ─────────────────────────────────────────────────────────────────
 OLD=$(cat /usr/share/proxyrules/version 2>/dev/null)
-# прежняя страница (имя с хешем) удаляется, иначе в каталоге копятся старые
+# the previous page (hashed name) is removed, otherwise old ones pile up in the directory
 rm -rf /www/luci-static/resources/view/proxyrules /www/luci-static/resources/view/proxyrules.js
 tar -C / -xzf "$TMP/p.tar.gz" || die "failed to unpack the files"
 chmod 755 /etc/init.d/proxyrules
 mkdir -p /etc/proxyrules && chmod 700 /etc/proxyrules
-# с --file конфиг собирает router.sh install из примера и ссылок
+# with --file the config is built by router.sh install from the example and the links
 if [ ! -f /etc/proxyrules.conf ] && [ -z "$FILE" ]; then
 	(umask 077; cp /etc/proxyrules.conf.example /etc/proxyrules.conf)
 	FRESH=1

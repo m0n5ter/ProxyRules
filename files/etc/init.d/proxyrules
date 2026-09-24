@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# proxyrules: sing-box по правилам из /etc/proxyrules.conf
+# proxyrules: sing-box driven by the rules in /etc/proxyrules.conf
 
 START=99
 STOP=10
@@ -35,8 +35,8 @@ net_down() {
 	fi
 }
 
-# dnsmasq отдаёт все запросы в sing-box (fake-ip для доменов из правил).
-# Исходные настройки сохраняются один раз и возвращаются при остановке.
+# dnsmasq forwards all queries to sing-box (fake-ip for the domains in the rules).
+# The original settings are saved once and restored on stop.
 dns_on() {
 	if [ ! -f "$DNS_BACKUP" ]; then
 		{

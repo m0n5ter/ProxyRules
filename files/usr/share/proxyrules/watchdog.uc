@@ -1,11 +1,11 @@
-// proxyrules: сторож.
+// proxyrules: watchdog.
 //
 //   ucode watchdog.uc <rundir> [dry]
 //
-// Каждые @check_interval секунд проверяет все соединения через Clash API sing-box,
-// переключает каждую цепочку (TR,DE,UK) на первое живое по приоритету, раз в сутки
-// обновляет списки list: и подсети из них в nftables, пишет status.json для LuCI.
-// dry — пробный прогон: nftables только проверяются (nft -c), не меняются.
+// Every @check_interval seconds checks all connections through the sing-box Clash API,
+// switches each chain (TR,DE,UK) to the first live one by priority, once a day
+// updates the list: lists and their subnets in nftables, writes status.json for LuCI.
+// dry — a trial run: nftables are only checked (nft -c), not changed.
 'use strict';
 
 import { readfile, writefile, open, rename, stat, unlink, popen } from 'fs';
@@ -14,9 +14,9 @@ const RUN = ARGV[0] ?? '/var/run/proxyrules';
 const DRY = ARGV[1] == 'dry';
 const st = json(readfile(`${RUN}/state.json`));
 
-const FAIL_AFTER = 2;        // столько неудач подряд — соединение упало
-const UP_AFTER = 3;          // столько успехов подряд — ожило (чтобы не дёргать цепочки)
-const PROBE_TIMEOUT = 5000;  // мс
+const FAIL_AFTER = 2;        // this many failures in a row — the connection is down
+const UP_AFTER = 3;          // this many successes in a row — it's back (so as not to flap the chains)
+const PROBE_TIMEOUT = 5000;  // ms
 const LIST_URL = 'https://github.com/itdoginfo/allow-domains/releases/latest/download/%s.srs';
 const LIST_MAX_AGE = 86400;
 
@@ -64,16 +64,16 @@ function api(method, path, body) {
 	return res;
 }
 
-// ---------------------------------------------------------------- соединения и цепочки
+// ---------------------------------------------------------------- connections and chains
 
 let nodes = {};
 for (let c in st.connections)
 	nodes[c.name] = { kind: c.kind, where: c.where, up: null, ok: 0, fail: 0, delay: null, since: time() };
 
-let active = {};             // цепочка -> что выбрано сейчас
+let active = {};             // chain -> what is selected now
 let api_ok = false;
 
-// null — API не отвечает (sing-box ещё стартует), иначе { имя: задержка } живых
+// null — the API doesn't answer (sing-box is still starting), otherwise { name: latency } of the live ones
 function probe() {
 	if (!st.probe) return {};
 	let r = api('GET', `/group/${st.probe}/delay?url=${urlencode(st.check_url)}&timeout=${PROBE_TIMEOUT}`);
@@ -105,7 +105,7 @@ function apply_chains() {
 		let want = null;
 		for (let m in members)
 			if (m == 'direct' || nodes[m]?.up === true) { want = m; break; }
-		want ??= key + '~auto';       // все лежат — пусть sing-box сам ищет живое
+		want ??= key + '~auto';       // all are down — let sing-box look for a live one itself
 
 		let now = proxies[key]?.now;
 		if (now == want) { active[key] = want; continue; }
@@ -120,7 +120,7 @@ function apply_chains() {
 	}
 }
 
-// ---------------------------------------------------------------- списки и nftables
+// ---------------------------------------------------------------- lists and nftables
 
 function ip2int(ip) {
 	let p = split(ip, '.');
@@ -140,7 +140,7 @@ function cidr_range(c) {
 	return [ base, base + size - 1 ];
 }
 
-// nft ругается на пересекающиеся интервалы в анонимных наборах — сливаем сами
+// nft complains about overlapping intervals in anonymous sets — merge them ourselves
 function merge_ranges(ranges) {
 	ranges = sort(ranges, (a, b) => a[0] - b[0]);
 	let out = [];
@@ -161,10 +161,10 @@ function as_array(v) {
 
 const IGNORED_KEYS = { domain: 1, domain_suffix: 1, domain_keyword: 1, domain_regex: 1 };
 
-// Подсети из списков -> правила цепочки pr_lists. Сохраняем ограничения по
-// протоколу и портам (у discord, например, только UDP 50000-65535).
+// Subnets from the lists -> rules of the pr_lists chain. Protocol and port limits
+// are kept (discord, for example, has only UDP 50000-65535).
 function rebuild_nft() {
-	let groups = {};          // "l4|порты" -> [диапазоны]
+	let groups = {};          // "l4|ports" -> [ranges]
 
 	for (let name in st.lists) {
 		let data;
@@ -175,7 +175,7 @@ function rebuild_nft() {
 			let plain = true;
 			for (let k in keys(r))
 				if (!(k in [ 'ip_cidr', 'network', 'port', 'port_range' ]) && !IGNORED_KEYS[k]) plain = false;
-			if (!plain) continue;   // source_*, invert, logical — в nft не переносим
+			if (!plain) continue;   // source_*, invert, logical — not carried over to nft
 
 			let nets = as_array(r.network);
 			let l4 = length(nets) == 1 ? nets[0] : 'tcp, udp';
@@ -206,7 +206,7 @@ function rebuild_nft() {
 	}
 
 	put(`${RUN}/lists.nft`, nft);
-	// в пробном прогоне таблицы нет — проверяем вместе с её описанием
+	// in a trial run the table doesn't exist — check it together with its definition
 	let r = sh(DRY ? `cat ${RUN}/nft.conf ${RUN}/lists.nft | nft -c -f - 2>&1` : `nft -f ${RUN}/lists.nft 2>&1`);
 	if (r.rc != 0) log(`nft: failed to apply list subnets: ${trim(r.out)}`);
 	return n;
@@ -239,7 +239,7 @@ function update_lists() {
 			continue;
 		}
 
-		// /var/run и /etc могут быть на разных ФС — пишем рядом и переименовываем
+		// /var/run and /etc may be on different filesystems — write next to it and rename
 		put(path, data);
 		list_info[name] = { updated: time() };
 		changed = true;
@@ -247,7 +247,7 @@ function update_lists() {
 	return changed;
 }
 
-// ---------------------------------------------------------------- статус
+// ---------------------------------------------------------------- status
 
 function write_status() {
 	let chains = {};
@@ -259,9 +259,9 @@ function write_status() {
 	put(`${RUN}/status.json`, sprintf('%J\n', out));
 }
 
-// ---------------------------------------------------------------- цикл
+// ---------------------------------------------------------------- loop
 
-rebuild_nft();                 // сразу, из того, что уже скачано
+rebuild_nft();                 // right away, from what has already been downloaded
 let next_lists = 0;
 
 while (true) {
@@ -272,7 +272,7 @@ while (true) {
 		apply_chains();
 		if (time() >= next_lists) {
 			if (update_lists()) rebuild_nft();
-			next_lists = time() + 3600;   // каждый список обновляется, когда ему больше суток
+			next_lists = time() + 3600;   // each list is updated when it's more than a day old
 		}
 	}
 	write_status();

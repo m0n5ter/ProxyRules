@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Управление proxyrules на роутере с этой машины.
+# Manage proxyrules on the router from this machine.
 #
 #   ./router.sh install DE='vless://…' NL='vless://…'
-#                                        скопировать файлы, собрать /etc/proxyrules.conf из
-#                                        примера, подставив ссылки соединений. Ничего не запускает.
-#   ./router.sh update                   поставить файлы из рабочей копии (конфиг и сервис
-#                                        не трогает; версия — из git describe)
-#   ./router.sh start                    (пере)запустить proxyrules и проверить; если проверка
-#                                        не прошла — остановить его (интернет напрямую)
-#   ./router.sh stop                     остановить proxyrules (интернет напрямую)
-#   ./router.sh uninstall                остановить и удалить proxyrules
+#                                        copy the files, build /etc/proxyrules.conf from the
+#                                        example with the connection links filled in. Starts nothing.
+#   ./router.sh update                   install the files from the working copy (leaves the
+#                                        config and the service alone; version from git describe)
+#   ./router.sh start                    (re)start proxyrules and check it; if the check
+#                                        fails — stop it (direct internet)
+#   ./router.sh stop                     stop proxyrules (direct internet)
+#   ./router.sh uninstall                stop and remove proxyrules
 #
-# HOST можно переопределить: HOST=root@10.0.0.1 ./router.sh …
+# HOST can be overridden: HOST=root@10.0.0.1 ./router.sh …
 set -euo pipefail
 
 HOST=${HOST:-root@192.168.1.1}
@@ -19,8 +19,8 @@ cd "$(dirname "$0")"
 
 remote() { ssh -o BatchMode=yes "$HOST" "$@"; }
 
-# Архив из рабочей копии (tools/build.sh) ставится тем же install.sh, что и релизы.
-# Работающий сервис не перезапускается.
+# An archive of the working copy (tools/build.sh) is installed by the same install.sh as releases.
+# A running service is not restarted.
 install_files() {
 	local tmp
 	tmp=$(mktemp -d)
@@ -32,31 +32,31 @@ install_files() {
 		rm -f /tmp/proxyrules.tar.gz /tmp/proxyrules-install.sh; exit $rc'
 }
 
-# Запуск с проверкой делает tools/start.sh на самом роутере. Он загружается
-# и проверяется `sh -n` там же, ДО того как что-либо будет перезапущено.
+# The checked start is done by tools/start.sh on the router itself. It is uploaded
+# and checked with `sh -n` there, BEFORE anything is restarted.
 run_start() {
-	if grep -qI $'\r' tools/start.sh; then echo "в tools/start.sh CRLF" >&2; exit 1; fi
+	if grep -qI $'\r' tools/start.sh; then echo "tools/start.sh has CRLF" >&2; exit 1; fi
 	remote 'cat > /tmp/proxyrules-start.sh && sh -n /tmp/proxyrules-start.sh' < tools/start.sh
 	remote 'sh /tmp/proxyrules-start.sh'
 }
 
 stop_service() {
-	remote '/etc/init.d/proxyrules stop; /etc/init.d/proxyrules disable; echo "proxyrules остановлен"'
+	remote '/etc/init.d/proxyrules stop; /etc/init.d/proxyrules disable; echo "proxyrules stopped"'
 }
 
 case "${1:-}" in
 install)
 	shift
-	(( $# )) || { echo "нужны ссылки: ./router.sh install DE='vless://…' NL='vless://…'" >&2; exit 1; }
+	(( $# )) || { echo "links needed: ./router.sh install DE='vless://…' NL='vless://…'" >&2; exit 1; }
 	for a in "$@"; do
-		[[ $a =~ ^[A-Za-z0-9-]+=(vless://|iface:). ]] || { echo "не NAME=vless://… или NAME=iface:…: ${a%%=*}" >&2; exit 1; }
+		[[ $a =~ ^[A-Za-z0-9-]+=(vless://|iface:). ]] || { echo "not NAME=vless://… or NAME=iface:…: ${a%%=*}" >&2; exit 1; }
 	done
 	install_files
 
-	# Ссылки идут через stdin (NAME=ссылка построчно), а не в командной строке ssh.
-	# Каждая заменяет строку «NAME = …» из примера.
+	# The links go through stdin (NAME=link per line), not on the ssh command line.
+	# Each one replaces the "NAME = …" line of the example.
 	printf '%s\n' "$@" | remote '
-		if [ -f /etc/proxyrules.conf ]; then echo "/etc/proxyrules.conf уже есть — не трогаю"; exit 0; fi
+		if [ -f /etc/proxyrules.conf ]; then echo "/etc/proxyrules.conf already exists — leaving it alone"; exit 0; fi
 		umask 077
 		cat > /tmp/proxyrules-links
 		awk "
@@ -66,14 +66,14 @@ install)
 				if (name in link) { print substr(\$0, 1, RLENGTH) link[name]; used[name] = 1; next }
 			}
 			{ print }
-			END { for (n in link) if (!(n in used)) { print \"в примере нет соединения \" n > \"/dev/stderr\"; bad = 1 }
+			END { for (n in link) if (!(n in used)) { print \"no such connection in the example: \" n > \"/dev/stderr\"; bad = 1 }
 			      exit bad }" /tmp/proxyrules-links /etc/proxyrules.conf.example > /tmp/proxyrules.conf.new
 		rc=$?
 		rm -f /tmp/proxyrules-links
 		if [ $rc -ne 0 ]; then rm -f /tmp/proxyrules.conf.new; exit 1; fi
 		mv /tmp/proxyrules.conf.new /etc/proxyrules.conf
 		ucode /usr/share/proxyrules/gen.uc /etc/proxyrules.conf /tmp/proxyrules-check /tmp/proxyrules-check/lists \
-			&& sing-box check -c /tmp/proxyrules-check/config.json && echo "/etc/proxyrules.conf собран и проверен"
+			&& sing-box check -c /tmp/proxyrules-check/config.json && echo "/etc/proxyrules.conf built and checked"
 		rm -rf /tmp/proxyrules-check'
 	;;
 
@@ -98,7 +98,7 @@ uninstall)
 		rm -rf /usr/share/proxyrules /var/run/proxyrules /www/luci-static/resources/view/proxyrules \
 			/tmp/luci-indexcache* /tmp/luci-modulecache
 		/etc/init.d/rpcd reload
-		echo 'удалено; /etc/proxyrules.conf и /etc/proxyrules/ оставлены'"
+		echo 'removed; /etc/proxyrules.conf and /etc/proxyrules/ are kept'"
 	;;
 
 *)

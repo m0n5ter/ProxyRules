@@ -1,10 +1,10 @@
-// proxyrules: генератор конфигурации sing-box и nftables из /etc/proxyrules.conf
+// proxyrules: generates the sing-box and nftables config from /etc/proxyrules.conf
 //
 //   ucode gen.uc <rules.conf> <outdir> [listsdir]
 //
-// Пишет в <outdir>: config.json (sing-box), nft.conf (таблица inet proxyrules),
-// state.json (для watchdog.uc), env.sh (константы для init-скрипта).
-// Ошибки — в stderr с номером строки, код выхода 1.
+// Writes to <outdir>: config.json (sing-box), nft.conf (table inet proxyrules),
+// state.json (for watchdog.uc), env.sh (constants for the init script).
+// Errors go to stderr with the line number, exit code 1.
 'use strict';
 
 import { readfile, writefile, mkdir, stat, open, rename } from 'fs';
@@ -15,8 +15,8 @@ const C = {
 	DNS_ADDR: '127.0.0.43',
 	API_ADDR: '127.0.0.1:9095',
 	FAKEIP_RANGE: '198.18.0.0/15',
-	MARK: 0x00400000,       // пакет нужно отдать в sing-box
-	OUT_MARK: 0x00800000,   // собственный трафик sing-box
+	MARK: 0x00400000,       // the packet has to go to sing-box
+	OUT_MARK: 0x00800000,   // sing-box's own traffic
 	ROUTE_TABLE: 106,
 	NFT_TABLE: 'proxyrules',
 	LISTS_DIR: '/etc/proxyrules/lists',
@@ -35,7 +35,7 @@ if (!conf_path || !outdir) {
 
 const RESERVED = { direct: true, block: true };
 const RULE_TYPES = { domain: true, list: true, ip: true, src: true, port: true, protocol: true };
-// что распознаёт sniff в sing-box (dns не нужен: DNS перехватывается раньше правил)
+// what sing-box sniffing recognizes (dns is not needed: DNS is intercepted before the rules)
 const PROTOCOLS = [ 'bittorrent', 'tls', 'http', 'quic', 'stun', 'dtls', 'ssh', 'rdp', 'ntp' ];
 
 let errors = [];
@@ -63,7 +63,7 @@ function is_domain(s) {
 	return !!match(s, /^([a-z0-9_]([a-z0-9_-]*[a-z0-9_])?\.)+[a-z0-9-]{2,}$/);
 }
 
-// ---------------------------------------------------------------- соединения
+// ---------------------------------------------------------------- connections
 
 function parse_vless(url, name, ln) {
 	let m = match(url, /^vless:\/\/([^@]+)@([^:/?#]+):([0-9]+)\/?(\?[^#]*)?(#.*)?$/);
@@ -87,12 +87,12 @@ function parse_vless(url, name, ln) {
 		fail(ln, 'invalid UUID in the vless link');
 	if (q.flow) ob.flow = q.flow;
 
-	// VLESS Encryption (Xray 25.8+: encryption=mlkem768x25519plus…) sing-box не умеет
+	// VLESS Encryption (Xray 25.8+: encryption=mlkem768x25519plus…) is not supported by sing-box
 	if (q.encryption && q.encryption != 'none')
 		fail(ln, 'sing-box does not support VLESS Encryption (encryption=' + substr(q.encryption, 0, 20) +
 			'…) — in x-ui set the inbound Decryption to none and take a new link');
-	// pqv (ML-DSA-65 для REALITY) — необязательная проверка подписи; sing-box её не делает,
-	// соединение работает и без неё, поэтому параметр просто пропускаем
+	// pqv (ML-DSA-65 for REALITY) is an optional signature check; sing-box doesn't do it,
+	// the connection works without it, so the parameter is simply skipped
 
 	let sec = q.security ?? 'none';
 	if (sec == 'tls' || sec == 'reality') {
@@ -104,7 +104,7 @@ function parse_vless(url, name, ln) {
 			if (!q.pbk) fail(ln, 'security=reality, but pbk is missing');
 			if (!q.sni) fail(ln, 'security=reality, but sni is missing — set SNI in the inbound Reality settings');
 			ob.tls.reality = { enabled: true, public_key: q.pbk, short_id: q.sid ?? '' };
-			// reality в sing-box работает только с uTLS
+			// reality in sing-box works only with uTLS
 			ob.tls.utls ??= { enabled: true, fingerprint: 'chrome' };
 		}
 	}
@@ -147,7 +147,7 @@ function parse_connection(name, value, ln) {
 	return fail(ln, 'a connection must be vless://… or iface:<interface>');
 }
 
-// ---------------------------------------------------------------- разбор файла
+// ---------------------------------------------------------------- parsing the file
 
 let settings = {
 	interfaces: 'br-lan',
@@ -172,7 +172,7 @@ if (text == null) {
 let ln = 0;
 for (let raw in split(text, '\n')) {
 	ln++;
-	// комментарий — «#» в начале строки или после пробела (в vless-ссылке «#имя» идёт без пробела)
+	// a comment is "#" at the start of a line or after a space (in a vless link "#name" has no space)
 	let line = trim(replace(raw, /(^|\s)#.*$/, ''));
 	if (line == '') continue;
 
@@ -192,13 +192,13 @@ for (let raw in split(text, '\n')) {
 		continue;
 	}
 	if (m) {
-		// всё остальное вида ИМЯ = A,B,C — именованная цепочка
+		// everything else of the form NAME = A,B,C is a named chain
 		push(chain_defs, { ln, name: m[1], members: filter(map(split(m[2], ','), (t) => trim(t)), (t) => t != '') });
 		continue;
 	}
 
-	// регулярки в ucode — POSIX: без ленивых квантификаторов и без \s внутри [...]
-	// правило: условие [& условие…] -> цель; условие: [!]тип:значение[, значение…]
+	// ucode regexes are POSIX: no lazy quantifiers and no \s inside [...]
+	// rule: condition [& condition…] -> target; condition: [!]type:value[, value…]
 	m = match(line, /^(!?[a-z]+:.+)->(.+)$/);
 	if (m) {
 		let conds = [];
@@ -217,13 +217,13 @@ for (let raw in split(text, '\n')) {
 	fail(ln, 'line is not a connection or chain (NAME = …), a rule (type:value -> TARGET) or a setting (@name = …)');
 }
 
-// ---------------------------------------------------------------- проверка правил
+// ---------------------------------------------------------------- checking the rules
 
-let chains = {};          // имя цепочки (или "TR_DE_UK" для заданной прямо в правиле) -> участники
-let named = {};           // только именованные: AUTO -> ["DE","UK","TR"]
+let chains = {};          // chain name (or "TR_DE_UK" for one given right in a rule) -> members
+let named = {};           // named ones only: AUTO -> ["DE","UK","TR"]
 let used_lists = {}, list_order = [];
 
-// сначала имена (участники могут ссылаться на цепочки, заданные ниже — это ошибка вложения)
+// names first (members may refer to chains defined below — that's a nesting error)
 for (let c in chain_defs) {
 	if (RESERVED[c.name]) fail(c.ln, `name "${c.name}" is reserved`);
 	else if (!match(c.name, /^[A-Za-z0-9-]{1,32}$/)) fail(c.ln, `chain name "${c.name}": only Latin letters, digits and "-"`);
@@ -248,7 +248,7 @@ function check_members(members, ln) {
 for (let c in chain_defs)
 	if (c.ok && check_members(c.members, c.ln)) chains[c.name] = c.members;
 
-// Цель правила: соединение, именованная цепочка, direct, block или цепочка прямо в правиле (A,B,C)
+// Rule target: a connection, a named chain, direct, block or a chain right in the rule (A,B,C)
 function resolve_targets(targets, ln) {
 	if (length(targets) == 0 || targets[0] == '') return fail(ln, 'no target after ->');
 	if (length(targets) == 1) {
@@ -262,7 +262,7 @@ function resolve_targets(targets, ln) {
 	return key;
 }
 
-// порт: 443 или диапазон 50000-65535
+// port: 443 or a range 50000-65535
 function parse_port(v) {
 	let m = match(v, /^([0-9]{1,5})(-([0-9]{1,5}))?$/);
 	if (!m) return null;
@@ -301,10 +301,10 @@ for (let r in rules) {
 		}
 	}
 
-	// Правило из одних отрицаний подходит почти всему — пришлось бы гнать через
-	// sing-box весь трафик сети. Для direct это не нужно: direct и так по умолчанию.
-	// protocol: виден только в трафике, который уже дошёл до sing-box, поэтому
-	// для перехвата он не годится — нужно ещё какое-то условие.
+	// A rule of negations only matches almost everything — all the network's traffic
+	// would have to go through sing-box. Not needed for direct: direct is the default anyway.
+	// protocol: is seen only in traffic that has already reached sing-box, so
+	// it can't be used for interception — some other condition is needed too.
 	if (r.target != 'direct') {
 		let pos = filter(r.conds, (c) => !c.neg);
 		if (!length(pos))
@@ -314,7 +314,7 @@ for (let r in rules) {
 	}
 }
 
-// настройки
+// settings
 let ifaces = filter(split(settings.interfaces, /[[:space:],]+/), (v) => v != '');
 if (!length(ifaces)) fail(settings_ln.interfaces ?? 0, '@interfaces is empty');
 for (let i in ifaces)
@@ -346,19 +346,19 @@ for (let key, members in chains) {
 	push(outbounds, {
 		type: 'urltest', tag: key + '~auto', outbounds: members,
 		url: settings.check_url, interval: '1m',
-		tolerance: 65535,           // не прыгать по задержке: держаться текущего, пока он жив
+		tolerance: 65535,           // don't jump by latency: stick to the current one while it's alive
 		idle_timeout: '30m',
 	});
 	push(outbounds, {
 		type: 'selector', tag: key,
 		outbounds: [ key + '~auto', ...members ],
-		default: key + '~auto',     // без watchdog цепочка всё равно переключается сама
+		default: key + '~auto',     // without watchdog the chain still switches by itself
 		interrupt_exist_connections: false,
 	});
 }
 
-// Через эту группу watchdog проверяет все соединения разом (GET /group/~probe/delay).
-// Именно selector: у urltest групповой замер пропускает недавно проверенные узлы.
+// watchdog checks all connections at once through this group (GET /group/~probe/delay).
+// It is a selector on purpose: a group test of urltest skips recently checked nodes.
 let probe = null;
 if (length(conn_order)) {
 	probe = '~probe';
@@ -375,7 +375,7 @@ for (let name in list_order) {
 	push(rule_sets, { type: 'local', tag: 'list-' + name, format: 'source', path });
 }
 
-// одно условие -> поля правила sing-box
+// one condition -> sing-box rule fields
 function cond_fields(c) {
 	let o = {};
 	if (c.type == 'domain') o.domain_suffix = c.values;
@@ -406,12 +406,12 @@ function route_rule(r) {
 	return o;
 }
 
-// простое правило: одно условие без «!»
+// a simple rule: one condition without "!"
 function simple(r) {
 	return length(r.conds) == 1 && !r.conds[0].neg;
 }
 
-// соседние простые правила одного типа с одной целью склеиваем в одно
+// adjacent simple rules of the same type with the same target are merged into one
 let merged = [];
 for (let r in rules) {
 	let last = length(merged) ? merged[length(merged) - 1] : null;
@@ -428,29 +428,29 @@ let route_rules = [
 ];
 for (let r in merged) push(route_rules, route_rule(r));
 
-// ---------------------------------------------------------------- перехват
-// Трафик должен дойти до sing-box, иначе правило не сработает. Правилу с целью
-// direct перехват не нужен (напрямую — это и есть поведение по умолчанию).
-// Остальным хватает перехвата по одному положительному условию — условия
-// связаны «И», значит подходящий трафик под него точно попадёт:
-//   domain, list -> fake-ip в DNS (подсети списков ставит в nft watchdog);
-//   иначе src/ip/port -> одно nft-правило со всеми этими условиями сразу;
-//   protocol в перехвате не участвует — nft его не видит, его проверит sing-box.
-// DNS не знает, какое устройство спрашивает, поэтому fake-ip домен получает
-// для всех; кому правило не подходит, пойдут дальше по правилам или напрямую.
+// ---------------------------------------------------------------- interception
+// Traffic has to reach sing-box, otherwise the rule won't fire. A rule with target
+// direct needs no interception (direct is the default behavior anyway).
+// For the rest, interception by one positive condition is enough — the conditions
+// are joined by AND, so matching traffic is sure to be caught by it:
+//   domain, list -> fake-ip in DNS (watchdog puts the lists' subnets into nft);
+//   otherwise src/ip/port -> one nft rule with all of these conditions at once;
+//   protocol takes no part in interception — nft can't see it, sing-box checks it.
+// DNS doesn't know which device is asking, so a domain gets fake-ip
+// for everyone; those the rule doesn't fit go on down the rules or direct.
 //
-// Исключение для direct: если оно стоит выше перехватывающего правила
-// (ip:<внешний IP> -> direct над src:<устройство> -> TR), трафик иначе уйдёт в
-// sing-box по src: и тот сам пойдёт «напрямую» — а соединение самого роутера
-// на свой WAN-адрес проброс портов не проходит. Поэтому direct из одних
-// src/ip/port без «!» становится nft-правилом return на своём месте по порядку.
-// А protocol:bittorrent -> direct над src:<устройство> -> TR работает само:
-// трафик устройства приходит в sing-box, sniff узнаёт протокол, и правило direct
-// срабатывает раньше.
-// После первого list: так не делаем: его подсети проверяются в pr_lists, ниже
-// всех этих правил, и return мог бы перебить правило, стоящее выше direct.
+// An exception for direct: if it sits above an intercepting rule
+// (ip:<external IP> -> direct above src:<device> -> TR), the traffic would otherwise go to
+// sing-box by src: and it would go "direct" by itself — but a connection of the router itself
+// to its own WAN address doesn't pass port forwarding. So a direct made of only
+// src/ip/port without "!" becomes an nft return rule in its place in the order.
+// And protocol:bittorrent -> direct above src:<device> -> TR works by itself:
+// the device's traffic comes to sing-box, sniffing detects the protocol, and the direct rule
+// fires first.
+// After the first list: this isn't done: its subnets are checked in pr_lists, below
+// all these rules, and a return could override a rule that stands above the direct.
 let fake_suffix = [], fake_sets = [];
-let nft_matches = [];     // [{ src, dst, ports, direct }] для правил без domain/list
+let nft_matches = [];     // [{ src, dst, ports, direct }] for rules without domain/list
 let seen_list = false;
 
 for (let r in merged) {
@@ -538,7 +538,7 @@ function nft_set(name, type, elems) {
 const MARK = sprintf('0x%08x', C.MARK), OUT_MARK = sprintf('0x%08x', C.OUT_MARK);
 const L4 = 'meta l4proto { tcp, udp }';
 
-// по nft-правилу (и своим наборам) на каждое правило из src/ip/port
+// an nft rule (and its own sets) for each rule made of src/ip/port
 let sets = nft_set('pr_ifaces', 'ifname', map(ifaces, (i) => `"${i}"`)) + nft_set('pr_local', 'ipv4_addr', C.LOCALV4);
 let pre_rules = '', out_rules = '';
 for (let i, mt in nft_matches) {
@@ -549,14 +549,14 @@ for (let i, mt in nft_matches) {
 	if (mt.ports) { sets += nft_set(`pr_m${i}_port`, 'inet_service', uniq(mt.ports)); match_expr += ` th dport @pr_m${i}_port`; }
 	let rule = mt.direct ? `\t\t${match_expr} return\n` : `\t\t${match_expr} meta mark set ${MARK} return\n`;
 	pre_rules += rule;
-	if (!mt.src) out_rules += rule;    // у трафика самого роутера нет «устройства»
+	if (!mt.src) out_rules += rule;    // the router's own traffic has no "device"
 }
 
 let nft = `table inet ${C.NFT_TABLE}
 delete table inet ${C.NFT_TABLE}
 table inet ${C.NFT_TABLE} {
 ${sets}
-	# заполняет watchdog.uc подсетями из списков list:
+	# filled by watchdog.uc with the subnets of list: lists
 	chain pr_lists {
 	}
 
@@ -584,7 +584,7 @@ ${out_rules}		ip daddr ${C.FAKEIP_RANGE} ${L4} meta mark set ${MARK} return
 }
 `;
 
-// ---------------------------------------------------------------- запись
+// ---------------------------------------------------------------- writing
 
 let state = {
 	api: C.API_ADDR, secret, probe,

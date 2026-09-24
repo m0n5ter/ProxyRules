@@ -1,5 +1,5 @@
-# Релиз: git tag v1.2.0 && git push origin v1.2.0
-# Собирает proxyrules.tar.gz и публикует его вместе с install.sh.
+# Release: git tag v1.2.0 && git push origin v1.2.0
+# Builds proxyrules.tar.gz and publishes it together with install.sh.
 name: release
 
 on:

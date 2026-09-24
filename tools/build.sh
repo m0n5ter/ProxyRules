@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Сборка архива для установки: tools/build.sh OUT.tar.gz [ВЕРСИЯ]
+# Build the install archive: tools/build.sh OUT.tar.gz [VERSION]
 #
-# В архиве дерево от корня роутера (etc, usr, www) — его распаковывает install.sh.
-# ВЕРСИЯ по умолчанию — из git (git describe: 1.2.0, 1.2.0-3-gabc1234, …-dirty),
-# записывается в /usr/share/proxyrules/version.
+# The archive holds a tree from the router's root (etc, usr, www) — install.sh unpacks it.
+# VERSION defaults to git (git describe: 1.2.0, 1.2.0-3-gabc1234, …-dirty)
+# and is written to /usr/share/proxyrules/version.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-OUT=$(realpath -m "${1:?нужен путь к архиву}")
+OUT=$(realpath -m "${1:?archive path needed}")
 VERSION=${2:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
 VERSION=${VERSION#v}
 
@@ -24,11 +24,11 @@ FILES=(
 VIEW=www/luci-static/resources/view/proxyrules.js
 MENU=usr/share/luci/menu.d/luci-app-proxyrules.json
 
-if grep -lI $'\r' "${FILES[@]/#/files/}" install.sh; then echo "в файлах выше CRLF" >&2; exit 1; fi
+if grep -lI $'\r' "${FILES[@]/#/files/}" install.sh; then echo "the files above have CRLF" >&2; exit 1; fi
 
-# LuCI грузит страницу как view/<путь>.js?v=<версия LuCI>, и браузер держит старую
-# копию, пока не обновится сам LuCI. Поэтому страница ставится под именем с хешем
-# содержимого (view/proxyrules/<хеш>.js), а путь в меню переписывается на него.
+# LuCI loads the page as view/<path>.js?v=<LuCI version>, and the browser keeps the old
+# copy until LuCI itself is updated. So the page is installed under a name with the
+# content hash (view/proxyrules/<hash>.js), and the menu path is rewritten to it.
 hash=$(md5sum "files/$VIEW" | cut -c1-8)
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
@@ -36,11 +36,11 @@ tar -C files -cf - "${FILES[@]}" | tar -C "$stage" -xf -
 mkdir -p "$stage/${VIEW%.js}"
 mv "$stage/$VIEW" "$stage/${VIEW%.js}/$hash.js"
 sed -i 's|"path": "proxyrules"|"path": "proxyrules/'"$hash"'"|' "$stage/$MENU"
-grep -q "proxyrules/$hash" "$stage/$MENU" || { echo "не удалось переписать путь в $MENU" >&2; exit 1; }
+grep -q "proxyrules/$hash" "$stage/$MENU" || { echo "failed to rewrite the path in $MENU" >&2; exit 1; }
 chmod 755 "$stage/etc/init.d/proxyrules"
 echo "$VERSION" > "$stage/usr/share/proxyrules/version"
 
-# только файлы, без каталогов: иначе распаковка в / поменяет права /etc, /usr…
+# files only, no directories: otherwise unpacking into / changes the modes of /etc, /usr…
 (cd "$stage" && find etc usr www -type f | sort) |
 	tar -C "$stage" -czf "$OUT" --owner=0 --group=0 --no-recursion -T -
-echo "$OUT: версия $VERSION, страница $hash"
+echo "$OUT: version $VERSION, page $hash"

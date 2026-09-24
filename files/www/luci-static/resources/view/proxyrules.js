@@ -26,7 +26,7 @@ const LISTS = [ 'anime', 'block', 'cloudflare', 'cloudfront', 'digitalocean', 'd
 	'google_ai', 'google_meet', 'google_play', 'hdrezka', 'hetzner', 'hodca', 'meta', 'news', 'ovh', 'porn',
 	'roblox', 'russia_inside', 'russia_outside', 'telegram', 'tiktok', 'twitter', 'ukraine_inside', 'youtube' ];
 
-// Как PROTOCOLS в gen.uc
+// Same as PROTOCOLS in gen.uc
 const PROTOCOLS = [ 'bittorrent', 'tls', 'http', 'quic', 'stun', 'dtls', 'ssh', 'rdp', 'ntp' ];
 
 const PLACEHOLDERS = {
@@ -52,14 +52,14 @@ const SETTINGS = [
 const NAME_RE = /^[A-Za-z0-9-]{1,32}$/;
 const STRUCT = { setting: true, conn: true, chain: true };
 
-// ─────────────────────────────────────────────────────────────── модель файла
+// ─────────────────────────────────────────────────────────────── file model
 //
-// Файл — список элементов: blank, note (подряд идущие строки-комментарии), setting,
-// conn, chain, rule, raw (нераспознанная строка). Пока элемент не изменён (dirty),
-// он пишется обратно своими исходными строками — форматирование и комментарии
-// файла сохраняются как есть.
+// The file is a list of items: blank, note (consecutive comment lines), setting,
+// conn, chain, rule, raw (an unrecognized line). Until an item is changed (dirty),
+// it is written back as its original lines — the file's formatting and comments
+// are kept as they are.
 
-// Комментарий — как в gen.uc: «#» в начале или после пробела
+// A comment is as in gen.uc: "#" at the start or after a space
 function splitComment(raw) {
 	const m = raw.match(/(^|\s)#(.*)$/);
 	return m ? { body: raw.slice(0, m.index).trim(), comment: m[2].trim() } : { body: raw.trim(), comment: '' };
@@ -112,7 +112,7 @@ function parseDoc(text) {
 	return items;
 }
 
-// Текст заголовка: изменённый — из it.text, иначе из исходных строк файла
+// Heading text: from it.text if changed, otherwise from the file's original lines
 function noteText(it) {
 	if (it.dirty && it.text != null) return it.text;
 	return it.lines.map((l) => l.replace(/^\s*#\s?/, '')).join('\n');
@@ -127,7 +127,7 @@ function condsText(conds) {
 	return conds.map((c) => (c.neg ? '!' : '') + c.type + ':' + c.values.join(', ')).join(' & ');
 }
 
-// Колонки — как в proxyrules.conf.example; «->» правила — под «->» правила выше (arrow)
+// Columns as in proxyrules.conf.example; a rule's "->" goes under the "->" of the rule above (arrow)
 function formatItem(it, arrow) {
 	switch (it.kind) {
 	case 'note': return it.text.split('\n').map((l) => l.trim() == '' ? '#' : '# ' + l);
@@ -147,14 +147,14 @@ function serialize(items) {
 	let arrow = 0;
 	return items.flatMap((it) => {
 		const lines = it.dirty ? formatItem(it, arrow) : it.lines;
-		// колонка берётся только у выровненного правила (слишком длинное её не задаёт)
+		// the column is taken only from an aligned rule (one that's too long doesn't set it)
 		const body = it.kind == 'rule' ? stripComment(lines[0]) : '';
 		if (/\s\s->/.test(body)) arrow = body.lastIndexOf('->');
 		return lines;
 	}).join('\n');
 }
 
-// Значения через запятую/пробел; для domain: из вставленной ссылки остаётся только хост
+// Values separated by commas/spaces; for domain: only the host is kept from a pasted link
 function normalizeValues(kind, raw) {
 	return raw.split(/[\s,]+/).filter((v) => v != '').map((v) => {
 		if (kind != 'domain') return v;
@@ -168,7 +168,7 @@ function normalizeValues(kind, raw) {
 	}).filter((v, i, a) => v != '' && a.indexOf(v) == i);
 }
 
-// vless://… → «vless · reality · 1.2.3.4:443» — без секретов
+// vless:// vless://… → "vless · reality · 1.2.3.4:443" — no secrets
 function linkSummary(link) {
 	let m = link.match(/^iface:(.+)$/);
 	if (m) return 'interface ' + m[1];
@@ -183,7 +183,7 @@ function linkSummary(link) {
 		.filter((x) => x).join(' · ');
 }
 
-// ─────────────────────────────────────────────────────────────── вид
+// ─────────────────────────────────────────────────────────────── view
 
 function nodeState(n) {
 	if (n.up === true) return E('span', { style: 'color:#2a2' }, '● up');
@@ -191,7 +191,7 @@ function nodeState(n) {
 	return E('span', { style: 'color:#888' }, '○ checking');
 }
 
-// Пользовательский текст — только текстовыми узлами (строка-потомок в E() идёт как innerHTML)
+// User text only as text nodes (a string child in E() goes in as innerHTML)
 function T(tag, attrs, text) {
 	return E(tag, attrs || {}, [ String(text) ]);
 }
@@ -201,12 +201,12 @@ function btn(label, title, fn, cls) {
 }
 
 const CSS = `
-/* одинаковый отступ под вкладками на всех вкладках: верхний отступ первого элемента содержимого убран */
+/* the same gap under the tabs on every tab: the top margin of the first content element is removed */
 .pr-tabs { margin-bottom:1em !important }
 .pr-body > :first-child, .pr-body > :first-child > :first-child { margin-top:0 !important }
-/* панель кнопок: тема задаёт её элементам float и разные отступы — здесь flex с равными промежутками */
+/* button bar: the theme gives its elements float and different margins — here it's flex with equal gaps */
 .pr-bar { display:flex !important; flex-wrap:wrap; gap:.5em; align-items:center; justify-content:flex-end; margin-top:1em !important }
-/* промежуток перед панелью кнопок одинаковый на всех вкладках: его задаёт только панель */
+/* the gap before the button bar is the same on every tab: only the bar sets it */
 .pr-body > :last-child { margin-bottom:0 !important }
 .pr-bar > * { float:none !important; margin:0 !important }
 .pr-bar > .pr-dirty { margin-right:auto !important }
@@ -216,8 +216,8 @@ const CSS = `
 .pr-list { margin:.3em 0 1em }
 .pr-row { display:grid; gap:.25em .8em; align-items:center; padding:.35em .3em; border-bottom:1px solid rgba(128,128,128,.18) }
 .pr-row:hover { background:rgba(128,128,128,.07) }
-/* Одна сетка на весь список, строки — её части (subgrid): колонки общие для всех строк,
-   Target и Comment — по содержимому, Condition — всё остальное */
+/* One grid for the whole list, the rows are its parts (subgrid): the columns are shared by all rows,
+   Target and Comment size to content, Condition takes the rest */
 .pr-rules, .pr-conns { display:grid }
 .pr-rules { grid-template-columns:auto minmax(0,1fr) auto auto auto }
 .pr-conns { grid-template-columns:auto minmax(0,1fr) auto auto }
@@ -227,7 +227,7 @@ const CSS = `
 .pr-rules > .pr-row > .pr-c-comment { max-width:18em }
 .pr-conns > .pr-row > .pr-comment { max-width:18em }
 .pr-rules > .pr-row > .pr-handle { width:1.4em }
-/* правило внутри группы — с отступом (ручка и условия сдвинуты относительно заголовка) */
+/* a rule inside a group is indented (the handle and conditions are shifted relative to the heading) */
 .pr-rules > .pr-row.pr-in-group > .pr-handle { margin-left:1.1em }
 .pr-rules > .pr-edit.pr-in-group { margin-left:1.1em }
 .pr-row.pr-head { font-size:85%; opacity:.6; border-bottom-color:rgba(128,128,128,.4) }
@@ -274,13 +274,13 @@ const CSS = `
 .pr-edit { padding:.7em .8em; margin:.4em 0; border:1px solid rgba(58,123,213,.55); border-radius:4px; background:rgba(58,123,213,.05) }
 .pr-edit .pr-line { display:flex; flex-wrap:wrap; gap:.4em; align-items:center; margin:.35em 0 }
 .pr-edit .pr-label { min-width:6em; opacity:.75 }
-/* тема LuCI задаёт полям фиксированную ширину: здесь списки — по содержимому
-   (в «Go via» помещается самая длинная цепочка), поле значений — всё остальное место */
+/* the LuCI theme gives fields a fixed width: here the selects size to content
+   ("Go via" fits the longest chain), the values field takes all the remaining space */
 .pr-edit select { width:auto !important; min-width:0 !important; max-width:100%; flex:0 0 auto }
 .pr-edit .pr-grow { flex:1 1 18em; min-width:10em; width:auto !important; max-width:none !important }
 .pr-edit .pr-err { color:#d33 }
 .pr-ms { position:relative }
-/* кнопка выбора списков — как текстовое поле темы (у bootstrap: 30px, padding 4px, рамка 1px, 13px) */
+/* the list picker button looks like the theme's text field (bootstrap: 30px, padding 4px, 1px border, 13px) */
 .pr-edit .pr-ms-btn { display:block; width:100% !important; max-width:none !important; height:30px; margin:0; padding:4px;
 	font:inherit; font-size:13px; line-height:18px; color:var(--text-color-high, inherit); background:var(--background-color-high, Canvas);
 	border:1px solid var(--border-color-high, rgba(128,128,128,.6)); border-radius:3px;
@@ -297,7 +297,7 @@ const CSS = `
 .pr-dirty { color:#e67e22; font-weight:bold; line-height:1 }
 .pr-empty { padding:1em; opacity:.6 }
 @media (max-width: 800px) {
-	/* узко: всё в одну колонку под ручкой, кнопки — строкой под правилом */
+	/* narrow: everything in one column under the handle, the buttons in a row under the rule */
 	.pr-rules { grid-template-columns:auto minmax(0,1fr) }
 	.pr-rules > .pr-row > .pr-c-conds, .pr-rules > .pr-row > .pr-c-wide { grid-column:2; grid-row:1 }
 	.pr-rules > .pr-row > .pr-c-target, .pr-rules > .pr-row > .pr-c-comment, .pr-rules > .pr-row > .pr-c-actions { grid-column:2 }
@@ -319,7 +319,7 @@ return view.extend({
 		const u = this.update, up = st.upgrade;
 		const line = [ E('strong', 'Version: '), st.version || 'unknown' ];
 
-		// Обновление закончилось и версия сменилась — страница уже другая, перезагрузить
+		// The update has finished and the version changed — the page is different now, reload
 		if (up && up.done && up.ok && st.version != this.loadedVersion) {
 			if (!this.reloading) {
 				this.reloading = true;
@@ -336,7 +336,7 @@ return view.extend({
 			return E('div', {}, out);
 		}
 
-		// Релизы проверяются только по кнопке
+		// Releases are checked only on a button press
 		const check = (label) => E('button', { class: 'btn cbi-button', click: ui.createHandlerFn(this, 'handleCheckUpdate') }, label);
 		if (u && u.newer)
 			line.push(' · ', E('strong', { style: 'color:#2a2' }, `${u.latest.replace(/^v/, '')} is available`), ' ',
@@ -391,10 +391,10 @@ return view.extend({
 			const chains = Object.keys(s.chains || {});
 			if (chains.length) {
 				out.push(E('p', { style: 'margin-top:1em' }, E('strong', 'Chains (bold — where traffic goes right now):')));
-				// Две колонки: имя (по ширине самого длинного) и участники
+				// Two columns: the name (as wide as the longest one) and the members
 				out.push(E('div', { style: 'display:grid;grid-template-columns:max-content 1fr;gap:.3em 1.5em;margin-left:1em' }, chains.flatMap((key) => {
 					const c = s.chains[key];
-					// У заданных прямо в правиле ключ вида "TR_DE_UK" — в именах «_» запрещён
+					// Chains given right in a rule have a key like "TR_DE_UK" — "_" is not allowed in names
 					const name = key.includes('_')
 						? E('em', { style: 'opacity:.7' }, 'inline')
 						: E('strong', {}, [ key ]);
@@ -442,14 +442,14 @@ return view.extend({
 
 		this.savedText = conf.content || '';
 		this.items = parseDoc(this.savedText);
-		// Открывается последняя вкладка (текст — нет: правки в нём не переживают перезагрузку)
+		// The last tab opens (not the text one: edits in it don't survive a reload)
 		let tab = null;
 		try { tab = localStorage.getItem('proxyrules.tab'); } catch (e) { }
 		this.tab = [ 'status', 'rules', 'conns', 'chains', 'settings' ].includes(tab) ? tab : 'rules';
-		this.errors = new Map();     // элемент -> сообщения последней проверки
-		this.editing = null;         // элемент, открытый в редакторе
+		this.errors = new Map();     // item -> messages of the last check
+		this.editing = null;         // the item open in the editor
 		this.editorNode = null;
-		this.pending = null;         // { apply() -> bool, cancel() } открытого редактора
+		this.pending = null;         // { apply() -> bool, cancel() } of the open editor
 
 		this.loadedVersion = st.version;
 		this.update = null;
@@ -507,7 +507,7 @@ return view.extend({
 		]);
 	},
 
-	// ─────────────────────────────────────────── общее
+	// ─────────────────────────────────────────── common
 
 	getText() {
 		return this.tab == 'text' ? this.textarea.value : serialize(this.items);
@@ -566,7 +566,7 @@ return view.extend({
 			E('p', { class: 'cbi-section-descr' }, 'File /etc/proxyrules.conf as is. The syntax is described at its top. Ctrl+S — check without saving.'),
 			this.textarea,
 		]);
-		// Проверка и сохранение относятся к файлу — на вкладке статуса их нет
+		// Check and save are about the file — the status tab doesn't have them
 		this.actionsNode.classList.toggle('pr-hidden', this.tab == 'status');
 		this.result.classList.toggle('pr-hidden', this.tab == 'status');
 		this.updateDirty();
@@ -576,7 +576,7 @@ return view.extend({
 		if (tab == this.tab) return;
 		if (!this.closeEditor(true)) return;
 		if (this.tab == 'text') {
-			// Текст мог быть изменён руками — модель строится заново
+			// The text may have been edited by hand — the model is rebuilt
 			if (this.textarea.value != serialize(this.items)) {
 				this.items = parseDoc(this.textarea.value);
 				this.errors.clear();
@@ -590,7 +590,7 @@ return view.extend({
 		this.renderAll();
 	},
 
-	// Изменение модели: сначала закрыть открытый редактор (с сохранением), потом fn
+	// Changing the model: first close the open editor (saving it), then fn
 	act(fn) {
 		if (!this.closeEditor(true)) return;
 		fn();
@@ -604,8 +604,8 @@ return view.extend({
 		if (!this.closeEditor(true)) return;
 		this.editing = it;
 		this.renderAll();
-		// Закрытый выше редактор сдвигает список — редактор встаёт на место строки;
-		// прокрутка — только если он не виден целиком
+		// An editor closed above shifts the list — the editor takes the row's place;
+		// scroll only if it isn't fully visible
 		this.keepAt(it, top);
 		this.reveal(this.editorNode);
 		const f = this.editorNode && this.editorNode.querySelector('input, textarea, select');
@@ -614,11 +614,11 @@ return view.extend({
 
 	rowTop(it) {
 		const el = this.rowEls && this.rowEls.get(it);
-		// верх места под строку вместе с внешним отступом — у редактора он есть, у строки нет
+		// the top of the row's space including the outer margin — the editor has it, the row doesn't
 		return el && el.isConnected ? el.getBoundingClientRect().top - (parseFloat(getComputedStyle(el).marginTop) || 0) : null;
 	},
 
-	// Что прокручивается: в некоторых темах LuCI это не окно, а контейнер страницы
+	// What scrolls: in some LuCI themes it's not the window but the page container
 	scroller() {
 		for (let el = this.ruleList.parentElement; el && el != document.body; el = el.parentElement) {
 			const oy = getComputedStyle(el).overflowY;
@@ -627,7 +627,7 @@ return view.extend({
 		return document.scrollingElement || document.documentElement;
 	},
 
-	// Видимая область с учётом закреплённой шапки темы
+	// The visible area, minus the theme's sticky header
 	viewport(sc) {
 		let top = 0, bottom = window.innerHeight;
 		if (sc != document.scrollingElement && sc != document.documentElement) {
@@ -648,7 +648,7 @@ return view.extend({
 		if (top != null && now != null && Math.abs(now - top) > 1) this.scroller().scrollBy(0, now - top);
 	},
 
-	// Прокрутить минимально, чтобы el был виден целиком (если выше экрана — важнее верх)
+	// Scroll as little as possible so el is fully visible (if it's above the screen, the top matters more)
 	reveal(el) {
 		if (!el || !el.isConnected) return;
 		const sc = this.scroller(), v = this.viewport(sc), r = el.getBoundingClientRect(), m = 8;
@@ -681,7 +681,7 @@ return view.extend({
 		]);
 	},
 
-	// Enter — готово, Esc — отмена
+	// Enter — done, Esc — cancel
 	editorKeys(ev) {
 		if (ev.key == 'Escape') { ev.preventDefault(); this.finishEdit(false); }
 		else if (ev.key == 'Enter' && (ev.target.tagName == 'INPUT' || ev.target.tagName == 'SELECT')) { ev.preventDefault(); this.finishEdit(true); }
@@ -694,14 +694,14 @@ return view.extend({
 		});
 	},
 
-	// Вставить новый элемент структуры после последнего элемента первого найденного вида
+	// Insert a new structure item after the last item of the first kind found
 	insertStruct(it, kinds) {
 		for (const k of kinds) {
 			let i = -1;
 			this.items.forEach((x, j) => { if (x.kind == k) i = j; });
 			if (i >= 0) { this.items.splice(i + 1, 0, it); return; }
 		}
-		// ничего такого нет — перед первым элементом-структурой или правилом вместе с его заголовком
+		// there's nothing like that — before the first structure item or rule, together with its heading
 		let i = this.items.findIndex((x) => STRUCT[x.kind] || x.kind == 'rule');
 		if (i < 0) i = this.items.length;
 		while (i > 0 && (this.items[i - 1].kind == 'note' || this.items[i - 1].kind == 'blank')) i--;
@@ -733,7 +733,7 @@ return view.extend({
 		return T('span', { class: 'pr-target ' + cls, title }, label);
 	},
 
-	// Цель правила: список имён + «inline chain…» с полем ввода
+	// Rule target: a list of names + "inline chain…" with an input field
 	targetPicker(value) {
 		const names = this.names();
 		const known = this.targetNames();
@@ -759,7 +759,7 @@ return view.extend({
 		};
 	},
 
-	// ─────────────────────────────────────────── правила
+	// ─────────────────────────────────────────── rules
 
 	ruleRegionStart() {
 		const first = this.items.findIndex((x) => x.kind == 'rule');
@@ -791,7 +791,7 @@ return view.extend({
 			E('div', { class: 'pr-row pr-head' }, [ E('span'), E('span', 'Condition'), E('span', 'Target'), E('span', 'Comment'), E('span') ]),
 		];
 		this.rowEls = new Map();
-		let inGroup = false;   // под заголовком, до пустой строки
+		let inGroup = false;   // under a heading, up to a blank line
 		for (let i = this.ruleRegionStart(); i < this.items.length; i++) {
 			const it = this.items[i];
 			if (it.kind == 'blank') { inGroup = false; continue; }
@@ -805,7 +805,7 @@ return view.extend({
 			rows.push(row);
 			this.rowEls.set(it, row);
 		}
-		// Совсем пусто — добавлять не от чего, поэтому кнопки здесь
+		// Completely empty — nothing to add from, so the buttons are here
 		if (rows.length == 1)
 			rows.push(q ? E('div', { class: 'pr-empty' }, 'Nothing matches the filter.') : E('div', { class: 'pr-empty' }, [
 				'No rules yet. ',
@@ -816,7 +816,7 @@ return view.extend({
 		if (this.ruleList.querySelector('.pr-flash')) this.clearFlash();
 	},
 
-	// Подсветка держится, пока идёт анимация, — переживает перерисовку после проверки
+	// The highlight stays while the animation runs — survives the redraw after a check
 	clearFlash() {
 		const f = this.flash;
 		if (f) setTimeout(() => { if (this.flash === f) this.flash = null; }, 2500);
@@ -847,7 +847,7 @@ return view.extend({
 			];
 		}
 		else {
-			// нераспознанная строка или соединение/цепочка посреди правил
+			// an unrecognized line or a connection/chain in the middle of the rules
 			const struct = STRUCT[it.kind];
 			main = [
 				T('div', { class: 'pr-c-conds pr-c-wide pr-mono', title: struct ? 'Edit it on the Connections tab' : 'Not recognized as a rule' },
@@ -875,7 +875,7 @@ return view.extend({
 	},
 
 	noteRow(it) {
-		// Рамки вида «── Rules ────» при показе убираются
+		// Frames like "── Rules ────" are removed for display
 		const lines = noteText(it).split('\n').map((l) => l.replace(/^[─═━\-=\s]+|[─═━\-=\s]+$/g, '')).filter((l) => l != '');
 		const row = E('div', { class: 'pr-row pr-note', dblclick: (ev) => ev.target.closest('button') || this.edit(it) }, [
 			E('span', { class: 'pr-handle', title: 'Drag to move the whole group', mousedown: () => row.draggable = true, mouseup: () => row.draggable = false }, [ '⋮⋮' ]),
@@ -894,7 +894,7 @@ return view.extend({
 		return row;
 	},
 
-	// Тащится правило или, за заголовок, группа целиком (заголовок + её правила)
+	// A rule is dragged or, by its heading, a whole group (heading + its rules)
 	dragSource(row, it) {
 		row.addEventListener('dragstart', (ev) => {
 			const group = it.kind == 'note';
@@ -938,8 +938,8 @@ return view.extend({
 		});
 	},
 
-	// Пока что-то тащат, у верхнего/нижнего края страница прокручивается сама —
-	// тем быстрее, чем ближе курсор к краю
+	// While something is dragged, the page scrolls by itself at the top/bottom edge —
+	// the faster, the closer the cursor is to the edge
 	startAutoScroll() {
 		this.dragY = null;
 		this.onDragMove = (ev) => { this.dragY = ev.clientY; };
@@ -962,7 +962,7 @@ return view.extend({
 		document.removeEventListener('dragover', this.onDragMove);
 	},
 
-	// Перед заголовком группы — значит в конец предыдущей группы (до пустых строк над заголовком)
+	// Before a group heading means at the end of the previous group (before the blank lines above the heading)
 	moveTo(it, ref, where) {
 		this.items.splice(this.items.indexOf(it), 1);
 		let i = this.items.indexOf(ref);
@@ -972,7 +972,7 @@ return view.extend({
 		this.items.splice(i, 0, it);
 	},
 
-	// Группа — от заголовка (или пустой строки) до следующей пустой строки или заголовка: [первый, последний]
+	// A group runs from a heading (or a blank line) to the next blank line or heading: [first, last]
 	sectionOf(it) {
 		const start = this.ruleRegionStart();
 		let i = this.items.indexOf(it), j = i;
@@ -981,7 +981,7 @@ return view.extend({
 		return [ i, j ];
 	},
 
-	// Группа целиком — перед/после группы, в которой ref; группы разделены пустой строкой
+	// A whole group — before/after the group ref is in; groups are separated by a blank line
 	moveGroup(note, ref, where) {
 		const L = this.items;
 		const [ a, b ] = this.sectionOf(note);
@@ -995,7 +995,7 @@ return view.extend({
 		if (at < L.length && L[at].kind != 'blank') L.splice(at, 0, { kind: 'blank', lines: [ '' ] });
 	},
 
-	// На одну позицию; через заголовок группы — в соседнюю группу
+	// By one position; across a group heading — into the neighboring group
 	step(it, dir) {
 		const start = this.ruleRegionStart();
 		let j = this.items.indexOf(it) + dir;
@@ -1019,7 +1019,7 @@ return view.extend({
 		return { kind: 'rule', lines: [], conds: [ { neg: false, type: 'domain', values: [] } ], target: target || '', comment: '', dirty: true, isNew: true };
 	},
 
-	// Новое правило сразу под строкой ref (правилом или заголовком группы); цель — как у соседнего правила
+	// A new rule right under the ref row (a rule or a group heading); target as the neighboring rule's
 	insertRule(ref) {
 		if (!this.closeEditor(true)) return;
 		const at = this.items.indexOf(ref) + 1;
@@ -1029,8 +1029,8 @@ return view.extend({
 		this.edit(it);
 	},
 
-	// Новая группа: под правилом — начинается прямо здесь (правила ниже уходят в неё),
-	// под заголовком — после всей его группы
+	// A new group: under a rule it starts right here (the rules below go into it),
+	// under a heading — after its whole group
 	insertGroup(ref) {
 		if (!this.closeEditor(true)) return;
 		let at = this.items.indexOf(ref) + 1;
@@ -1046,7 +1046,7 @@ return view.extend({
 		this.edit(it);
 	},
 
-	// Убрать заголовок; у только что добавленного — и пустую строку, вставленную вместе с ним
+	// Remove a heading; for a just-added one, also the blank line inserted with it
 	dropNote(it) {
 		this.items.splice(this.items.indexOf(it), 1);
 		if (it.blank && this.items.includes(it.blank)) this.items.splice(this.items.indexOf(it.blank), 1);
@@ -1093,7 +1093,7 @@ return view.extend({
 				for (const c of draft) {
 					const values = normalizeValues(c.type, c.raw);
 					if (!values.length) continue;
-					// одинаковые условия gen.uc не принимает — объединяем
+					// gen.uc doesn't accept identical conditions — merge them
 					const same = conds.find((x) => x.type == c.type && x.neg == c.neg);
 					if (same) same.values.push(...values.filter((v) => !same.values.includes(v)));
 					else conds.push({ neg: c.neg, type: c.type, values });
@@ -1121,9 +1121,9 @@ return view.extend({
 		]);
 	},
 
-	// Заголовок правится прямо в строке таблицы и применяется при каждом вводе; Esc — вернуть как было
-	// Выбор list: и protocol: — кнопка со списком выбранного, по клику панель с чекбоксами.
-	// Имена из файла, которых нет среди известных, тоже показываются (отмеченными).
+	// A heading is edited right in the table row and applied on every input; Esc reverts it
+	// Picking list: and protocol: — a button showing the selection, a panel with checkboxes on click.
+	// Names from the file that aren't among the known ones are shown too (checked).
 	listPicker(c, known, what) {
 		const sel = new Set(normalizeValues(c.type, c.raw));
 		const all = [ ...known, ...[ ...sel ].filter((v) => !known.includes(v)) ];
@@ -1147,7 +1147,7 @@ return view.extend({
 		const close = () => { wrap.classList.remove('pr-ms-open'); document.removeEventListener('mousedown', outside, true); };
 		const wrap = E('div', {
 			class: 'pr-ms pr-grow',
-			// Esc и Enter закрывают только панель, а не весь редактор
+			// Esc and Enter close only the panel, not the whole editor
 			keydown: (ev) => {
 				if (wrap.classList.contains('pr-ms-open') && (ev.key == 'Escape' || ev.key == 'Enter')) {
 					ev.preventDefault(); ev.stopPropagation(); close(); button.focus();
@@ -1223,7 +1223,7 @@ return view.extend({
 		]);
 	},
 
-	// Новое правило — после последнего (в самом конце файла могут быть комментарии)
+	// A new rule goes after the last one (the very end of the file may hold comments)
 	addRule() {
 		if (!this.closeEditor(true)) return;
 		const rules = this.items.map((x, i) => x.kind == 'rule' ? i : -1).filter((i) => i >= 0);
@@ -1236,7 +1236,7 @@ return view.extend({
 		this.edit(it);
 	},
 
-	// ─────────────────────────────────────────── соединения и цепочки
+	// ─────────────────────────────────────────── connections and chains
 
 	usedBy(name) {
 		const out = [];
@@ -1250,7 +1250,7 @@ return view.extend({
 		return out;
 	},
 
-	// Переименование — вместе со всеми ссылками на имя
+	// Renaming — together with all references to the name
 	rename(from, to) {
 		const sub = (list) => list.map((n) => n == from ? to : n);
 		for (const it of this.items) {
@@ -1274,7 +1274,7 @@ return view.extend({
 		this.remove(it);
 	},
 
-	// Строка соединения/цепочки; редактор — на её месте
+	// A connection/chain row; the editor takes its place
 	structRow(it, cells) {
 		if (it == this.editing) {
 			this.editorNode = this.editorNode || (it.kind == 'conn' ? this.connEditor(it) : this.chainEditor(it));
@@ -1411,12 +1411,12 @@ return view.extend({
 		]);
 	},
 
-	// ─────────────────────────────────────────── настройки
+	// ─────────────────────────────────────────── settings
 
 	setSetting(name, value) {
 		const it = this.items.find((x) => x.kind == 'setting' && x.name == name);
 		value = value.trim();
-		if (it && value == '') this.items.splice(this.items.indexOf(it), 1);  // пусто — значение по умолчанию
+		if (it && value == '') this.items.splice(this.items.indexOf(it), 1);  // empty — the default value
 		else if (it) Object.assign(it, { value, dirty: true });
 		else if (value != '') this.insertStruct({ kind: 'setting', name, value, comment: '', lines: [], dirty: true }, [ 'setting' ]);
 		if (it) this.errors.delete(it);
@@ -1451,7 +1451,7 @@ return view.extend({
 					].filter((x) => x)),
 				]);
 			}),
-			// незнакомые gen.uc настройки (опечатка?) — показать, чтобы было что исправить или удалить
+			// settings gen.uc doesn't know (a typo?) — show them so there's something to fix or remove
 			...this.items.filter((it) => it.kind == 'setting' && !SETTINGS.some((s) => s.name == it.name)).map((it) =>
 				E('div', { class: 'cbi-value' }, [
 					T('label', { class: 'cbi-value-title', style: 'color:#d33' }, '@' + it.name),
@@ -1464,9 +1464,9 @@ return view.extend({
 		];
 	},
 
-	// ─────────────────────────────────────────── проверка и сохранение
+	// ─────────────────────────────────────────── check and save
 
-	// «line N: …» из gen.uc → элементы модели, в которых эти строки
+	// "line N: …" from gen.uc → the model items holding those lines
 	mapErrors(text, errors) {
 		this.errors.clear();
 		if (this.tab == 'text') {
@@ -1525,7 +1525,7 @@ return view.extend({
 		const text = this.getText();
 		return callSave(text).then((r) => {
 			this.showResult(r, r.restarted ? 'Saved and applied' : 'Saved (service is not running)');
-			// «saved, but the service did not come up» — файл всё равно записан
+			// "saved, but the service did not come up" — the file is written anyway
 			if (r.ok || /^saved,/.test(r.errors || '')) {
 				this.savedText = text;
 				if (this.tab != 'text') this.items = parseDoc(text);

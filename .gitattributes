@@ -1,2 +1,2 @@
-# Всё уходит на роутер (ash, ucode, nft) — только LF, иначе скрипты ломаются
+# Everything goes to the router (ash, ucode, nft) — LF only, otherwise the scripts break
 * text=auto eol=lf

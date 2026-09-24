@@ -1,4 +1,4 @@
-// proxyrules: ubus-объект для страницы LuCI
+// proxyrules: ubus object for the LuCI page
 'use strict';
 
 import { readfile, writefile, open, rename, mkdir, stat, popen } from 'fs';
@@ -31,8 +31,8 @@ function running() {
 	return sh(`${INIT} running`).rc == 0;
 }
 
-// Проверка без применения: генератор + sing-box check во временном каталоге.
-// Каталог удаляется сразу — в нём секреты.
+// Check without applying: generator + sing-box check in a temporary directory.
+// The directory is removed right away — it holds secrets.
 function check(content) {
 	if (type(content) != 'string' || trim(content) == '')
 		return { ok: false, errors: 'file is empty' };
@@ -57,8 +57,8 @@ function version() {
 	return trim(readfile(`${LIB}/version`) ?? '') || null;
 }
 
-// a новее b? Сравниваются только x.y.z в начале: сборка из git
-// (1.2.0-3-gabc1234) считается равной своему релизу 1.2.0.
+// Is a newer than b? Only the leading x.y.z is compared: a build from git
+// (1.2.0-3-gabc1234) counts as equal to its release 1.2.0.
 function newer(a, b) {
 	let x = match(a ?? '', /^v?([0-9]+)\.([0-9]+)\.([0-9]+)/);
 	let y = match(b ?? '', /^v?([0-9]+)\.([0-9]+)\.([0-9]+)/);
@@ -69,7 +69,7 @@ function newer(a, b) {
 	return false;
 }
 
-// Последний релиз на GitHub (проверяется только по кнопке на странице)
+// The latest release on GitHub (checked only on a button press on the page)
 function latest() {
 	let r = sh(`curl -fsS -m 15 -H 'Accept: application/vnd.github+json' https://api.github.com/repos/${REPO}/releases/latest`);
 	let rel = null;
@@ -79,8 +79,8 @@ function latest() {
 	return { error: r.out || 'unexpected answer from GitHub' };
 }
 
-// Обновление идёт отдельным процессом (setsid): install.sh перезагружает rpcd
-// и перезапускает сервис. Последняя строка лога «rc=N» — оно закончилось.
+// The update runs as a separate process (setsid): install.sh reloads rpcd
+// and restarts the service. The last log line "rc=N" means it has finished.
 function upgrade_state() {
 	let log = readfile(UPGRADE_LOG);
 	if (log == null) return null;
@@ -164,7 +164,7 @@ const methods = {
 			let u = upgrade_state();
 			if (u && !u.done)
 				return { ok: false, errors: 'an update is already running' };
-			// установщик берётся из того же релиза: он знает, какие пакеты нужны новой версии
+			// the installer comes from the same release: it knows which packages the new version needs
 			let d = sh(`curl -fsSL -m 15 -o ${UPGRADE_SH} https://github.com/${REPO}/releases/download/${tag}/install.sh && sh -n ${UPGRADE_SH}`);
 			if (d.rc != 0)
 				return { ok: false, errors: 'failed to download the installer: ' + d.out };
