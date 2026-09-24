@@ -108,7 +108,7 @@ domain:theeconomist.com, makeuseof.com, nationalintel.com                   -> A
 domain:spotify.com, chess.com, modrinth.com, idiod.video, img9-no-fun.xyz   -> AUTO
 domain:brawlstars.com, brawlstarsgame.com, supercell.com, supercellid.com   -> AUTO
 domain:supercellstore.com, supercellgames.com                               -> AUTO
-domain:rutracker.org, rutor.info, ntc.party, qbittorrent.org    -> AUTO
+domain:rutracker.org, rutor.info, ntc.party, qbittorrent.org                -> AUTO
 domain:live.com, oracle.com, intel.com, logitech.com, seagate.com, canon.com -> AUTO
 domain:dlink.com, st.com, cpuid.com, ultimaker.com, virtualbox.org          -> AUTO
 domain:notepad-plus-plus.org, rustdesk.com, wiresock.net, obfuscar.com      -> AUTO

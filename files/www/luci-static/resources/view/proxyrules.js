@@ -10,6 +10,8 @@ const callCheck = rpc.declare({ object: 'proxyrules', method: 'check', params: [
 const callSave = rpc.declare({ object: 'proxyrules', method: 'save', params: [ 'content' ] });
 const callService = rpc.declare({ object: 'proxyrules', method: 'service', params: [ 'action' ] });
 const callStatus = rpc.declare({ object: 'proxyrules', method: 'status' });
+const callUpdate = rpc.declare({ object: 'proxyrules', method: 'update', params: [ 'force' ] });
+const callUpgrade = rpc.declare({ object: 'proxyrules', method: 'upgrade', params: [ 'tag' ] });
 
 function ago(ts) {
 	if (!ts) return '—';
@@ -308,8 +310,42 @@ return view.extend({
 		return Promise.all([ callGet(), callStatus() ]);
 	},
 
+	renderVersion(st) {
+		const u = this.update, up = st.upgrade;
+		const line = [ E('strong', 'Version: '), st.version || 'unknown' ];
+
+		// Обновление закончилось и версия сменилась — страница уже другая, перезагрузить
+		if (up && up.done && up.ok && st.version != this.loadedVersion) {
+			if (!this.reloading) {
+				this.reloading = true;
+				window.setTimeout(() => location.reload(), 1500);
+			}
+			return E('p', { class: 'alert-message success' }, `Updated to ${st.version}, reloading the page…`);
+		}
+
+		if (up && (!up.done || this.upgrading)) {
+			const out = [ E('p', {}, line) ];
+			if (!up.done) out.push(E('p', { class: 'alert-message notice' }, [ E('span', { class: 'spinning' }, 'Updating…') ]));
+			else out.push(E('p', { class: 'alert-message error' }, 'Update failed:'));
+			if (up.log) out.push(E('pre', { style: 'white-space:pre-wrap;font-size:90%' }, [ up.log ]));
+			return E('div', {}, out);
+		}
+
+		if (!u)
+			line.push(E('span', { style: 'opacity:.6' }, ' · checking for updates…'));
+		else if (u.newer)
+			line.push(' · ', E('strong', { style: 'color:#2a2' }, `${u.latest.replace(/^v/, '')} is available`), ' ',
+				u.url ? E('a', { href: u.url, target: '_blank', rel: 'noopener' }, 'release notes') : '', ' ',
+				E('button', { class: 'btn cbi-button cbi-button-action', click: ui.createHandlerFn(this, 'handleUpgrade', u.latest) }, 'Update'));
+		else {
+			line.push(E('span', { style: 'opacity:.6' }, u.error ? ' · could not check for updates' : ' · latest'), ' ',
+				E('a', { href: '#', click: ui.createHandlerFn(this, 'handleCheckUpdate') }, 'check now'));
+		}
+		return E('p', {}, line);
+	},
+
 	renderStatus(st) {
-		const out = [];
+		const out = [ this.renderVersion(st) ];
 
 		if (!st.running) {
 			out.push(E('p', { class: 'alert-message warning' }, 'Service is stopped.'));
@@ -408,7 +444,10 @@ return view.extend({
 		this.editorNode = null;
 		this.pending = null;         // { apply() -> bool, cancel() } открытого редактора
 
+		this.loadedVersion = st.version;
+		this.update = null;
 		this.statusNode = E('div', {}, this.renderStatus(st));
+		callUpdate(false).then((u) => { this.update = u; return this.refreshStatus(); }).catch(() => {});
 		poll.add(() => this.refreshStatus(), 5);
 
 		this.textarea = E('textarea', {
@@ -1495,6 +1534,26 @@ return view.extend({
 		this.setText(this.savedText);
 		dom.content(this.result, []);
 		this.renderAll();
+	},
+
+	handleCheckUpdate(ev) {
+		ev.preventDefault();
+		this.update = null;
+		return this.refreshStatus()
+			.then(() => callUpdate(true))
+			.then((u) => { this.update = u; return this.refreshStatus(); });
+	},
+
+	handleUpgrade(tag) {
+		if (!confirm(`Update proxyrules to ${tag.replace(/^v/, '')}? A running service will be restarted.`)) return;
+		return callUpgrade(tag).then((r) => {
+			if (!r.ok) {
+				ui.addNotification(null, E('pre', { style: 'white-space:pre-wrap' }, [ r.errors || 'Failed' ]), 'error');
+				return;
+			}
+			this.upgrading = true;
+			return this.refreshStatus();
+		});
 	},
 
 	handleService(action) {

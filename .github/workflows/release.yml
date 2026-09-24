@@ -1,0 +1,26 @@
+# Релиз: git tag v1.2.0 && git push origin v1.2.0
+# Собирает proxyrules.tar.gz и публикует его вместе с install.sh.
+name: release
+
+on:
+  push:
+    tags: [ 'v[0-9]+.[0-9]+.[0-9]+' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          sh -n install.sh
+          tools/build.sh proxyrules.tar.gz "$GITHUB_REF_NAME"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" proxyrules.tar.gz install.sh --title "$GITHUB_REF_NAME" --generate-notes
