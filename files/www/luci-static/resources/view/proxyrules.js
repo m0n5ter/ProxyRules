@@ -263,6 +263,15 @@ const CSS = `
 .pr-edit select { width:auto !important; min-width:0 !important; max-width:100%; flex:0 0 auto }
 .pr-edit .pr-grow { flex:1 1 18em; min-width:10em; width:auto !important; max-width:none !important }
 .pr-edit .pr-err { color:#d33 }
+.pr-ms { position:relative }
+.pr-edit .pr-ms-btn { width:100% !important; max-width:none !important; min-height:2em; text-align:left; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.pr-ms-empty { opacity:.6 }
+.pr-ms-panel { display:none; position:absolute; z-index:100; left:0; right:0; top:100%; margin-top:2px; max-height:20em; overflow:auto;
+	padding:.4em .6em; grid-template-columns:repeat(auto-fill, minmax(10em, 1fr)); gap:.1em 1em;
+	background:var(--background-color-high, Canvas); color:inherit; border:1px solid rgba(128,128,128,.5); border-radius:4px; box-shadow:0 4px 14px rgba(0,0,0,.18) }
+.pr-ms-open > .pr-ms-panel { display:grid }
+.pr-ms-panel label { display:flex; align-items:center; gap:.3em; padding:.15em 0; cursor:pointer; white-space:nowrap }
+.pr-ms-panel input { margin:0 }
 .pr-chip { display:inline-flex; align-items:center; gap:.2em; padding:.1em .2em .1em .5em; margin:.15em; border-radius:3px; background:rgba(58,123,213,.18) }
 .pr-chip .btn { padding:0 .35em !important; min-width:0; line-height:1.5 }
 .pr-dirty { color:#e67e22; font-weight:bold; margin-right:auto }
@@ -397,7 +406,6 @@ return view.extend({
 			input: () => this.updateDirty(),
 		}, [ this.savedText ]);
 
-		this.listsDatalist = E('datalist', { id: 'proxyrules-lists' }, LISTS.map((l) => E('option', { value: l })));
 		this.filterInput = E('input', {
 			class: 'cbi-input-text pr-filter', type: 'search', placeholder: 'Filter rules…',
 			input: () => this.renderRuleList(),
@@ -704,7 +712,6 @@ return view.extend({
 
 	renderRulesTab() {
 		return [
-			this.listsDatalist,
 			E('div', { class: 'pr-toolbar' }, [
 				this.filterInput,
 				E('span', { style: 'opacity:.65;font-size:90%;flex:1' }, 'Checked top to bottom, the first match wins. Drag ⋮⋮ or use ↑ ↓ to reorder; double-click a rule to edit; +R / +G add a rule / group right below.'),
@@ -999,9 +1006,8 @@ return view.extend({
 		const err = E('span', { class: 'pr-err' });
 
 		const renderConds = () => dom.content(box, draft.map((c, i) => {
-			const val = E('input', {
+			const val = c.type == 'list' ? this.listPicker(c) : E('input', {
 				class: 'cbi-input-text pr-grow', type: 'text', value: c.raw, placeholder: PLACEHOLDERS[c.type],
-				list: c.type == 'list' ? 'proxyrules-lists' : null,
 				input: () => c.raw = val.value,
 			});
 			return E('div', { class: 'pr-line' }, [
@@ -1056,6 +1062,47 @@ return view.extend({
 	},
 
 	// Заголовок правится прямо в строке таблицы и применяется при каждом вводе; Esc — вернуть как было
+	// Выбор list: — кнопка со списком выбранного, по клику панель с чекбоксами.
+	// Имена из файла, которых нет среди известных, тоже показываются (отмеченными).
+	listPicker(c) {
+		const sel = new Set(normalizeValues('list', c.raw));
+		const all = [ ...LISTS, ...[ ...sel ].filter((v) => !LISTS.includes(v)) ];
+		const label = E('span', { class: 'pr-ms-label' });
+		const update = () => {
+			const on = all.filter((v) => sel.has(v));
+			c.raw = on.join(', ');
+			dom.content(label, [ on.length ? on.join(', ') : 'choose lists…' ]);
+			label.classList.toggle('pr-ms-empty', !on.length);
+		};
+		const panel = E('div', { class: 'pr-ms-panel' }, all.map((v) => E('label', {}, [
+			E('input', { type: 'checkbox', checked: sel.has(v) ? '' : null, change: (ev) => { ev.target.checked ? sel.add(v) : sel.delete(v); update(); } }),
+			' ' + v,
+		])));
+		const outside = (ev) => { if (!wrap.contains(ev.target)) close(); };
+		const open = () => {
+			wrap.classList.add('pr-ms-open');
+			document.addEventListener('mousedown', outside, true);
+			this.reveal(panel);
+		};
+		const close = () => { wrap.classList.remove('pr-ms-open'); document.removeEventListener('mousedown', outside, true); };
+		const wrap = E('div', {
+			class: 'pr-ms pr-grow',
+			// Esc и Enter закрывают только панель, а не весь редактор
+			keydown: (ev) => {
+				if (wrap.classList.contains('pr-ms-open') && (ev.key == 'Escape' || ev.key == 'Enter')) {
+					ev.preventDefault(); ev.stopPropagation(); close(); button.focus();
+				}
+			},
+		}, [
+			E('button', { class: 'cbi-input-select pr-ms-btn', type: 'button', title: 'Choose lists',
+				click: (ev) => { ev.preventDefault(); wrap.classList.contains('pr-ms-open') ? close() : open(); } }, [ label ]),
+			panel,
+		]);
+		const button = wrap.firstChild;
+		update();
+		return wrap;
+	},
+
 	noteEditor(it) {
 		const orig = { text: it.text, dirty: it.dirty };
 		const start = noteText(it);
