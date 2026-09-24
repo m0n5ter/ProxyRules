@@ -12,14 +12,199 @@ const callService = rpc.declare({ object: 'proxyrules', method: 'service', param
 const callStatus = rpc.declare({ object: 'proxyrules', method: 'status' });
 const callUpdate = rpc.declare({ object: 'proxyrules', method: 'update' });
 const callUpgrade = rpc.declare({ object: 'proxyrules', method: 'upgrade', params: [ 'tag' ] });
+const callSetLang = rpc.declare({ object: 'proxyrules', method: 'set_lang', params: [ 'lang' ] });
+
+// Interface language (/etc/proxyrules/lang), taken from the status on load
+let LANG = 'en';
+
+// Translation: the English text is the key; %s are filled in order
+function tr(s, ...args) {
+	let r = LANG == 'ru' && RU[s] || s;
+	for (const a of args) r = r.replace('%s', a);
+	return r;
+}
+
+const RU = {
+	"%s s": "%s с",
+	"%s min": "%s мин",
+	"%s h": "%s ч",
+	"%s d": "%s дн",
+	"Interfaces": "Интерфейсы",
+	"Where to intercept traffic from, separated by spaces.": "Откуда перехватывать трафик, через пробел.",
+	"DNS server": "DNS-сервер",
+	"DoH server: IP address or hostname.": "DoH-сервер: IP-адрес или имя.",
+	"Bootstrap DNS": "Bootstrap DNS",
+	"Plain DNS (IPv4) used to resolve the DoH server by name.": "Обычный DNS (IPv4), через который узнаётся адрес DoH-сервера.",
+	"Check URL": "Адрес проверки",
+	"Requested through each connection to see whether it is alive.": "Запрашивается через каждое соединение, чтобы понять, живо ли оно.",
+	"Check interval": "Интервал проверки",
+	"Seconds between connection checks, 5 to 3600.": "Секунд между проверками соединений, от 5 до 3600.",
+	"Download lists via": "Качать списки через",
+	"Connection or chain used to download list: rules.": "Соединение или цепочка, через которые скачиваются списки list:.",
+	"Log level": "Уровень лога",
+	"interface %s": "интерфейс %s",
+	"● up": "● работает",
+	"● not responding": "● не отвечает",
+	"○ checking": "○ проверяется",
+	"Version: ": "Версия: ",
+	"unknown": "неизвестна",
+	"Updated to %s, reloading the page…": "Обновлено до %s, перезагружаю страницу…",
+	"Updating…": "Обновление…",
+	"Update failed:": "Обновление не удалось:",
+	"%s is available": "доступна %s",
+	"release notes": "что нового",
+	"Update": "Обновить",
+	" · could not check for updates ": " · не удалось проверить обновления ",
+	" · this is the latest release ": " · это последний релиз ",
+	"Check again": "Проверить ещё раз",
+	"Check for updates": "Проверить обновления",
+	"Service is stopped.": "Сервис остановлен.",
+	"sing-box is not responding (still starting?)": "sing-box не отвечает (ещё запускается?)",
+	"Connection": "Соединение",
+	"Endpoint": "Адрес",
+	"State": "Состояние",
+	"Latency": "Задержка",
+	"In this state for": "В этом состоянии",
+	"%s ms": "%s мс",
+	"Chains (bold — where traffic goes right now):": "Цепочки (жирным — куда идёт трафик сейчас):",
+	"inline": "в правиле",
+	"  — all down, sing-box is looking for a live one itself": "  — все лежат, sing-box сам ищет живое",
+	"Lists: %s, oldest updated %s ago.": "Списков: %s, самый старый обновлён %s назад.",
+	" Failed to update: %s.": " Не обновились: %s.",
+	"Checked %s ago.": "Проверено %s назад.",
+	"Restart": "Перезапустить",
+	"Stop": "Остановить",
+	"Start": "Запустить",
+	"Filter rules…": "Фильтр правил…",
+	"Revert": "Отменить",
+	"Check": "Проверить",
+	"Save & Apply": "Сохранить и применить",
+	"● Unsaved changes": "● Есть несохранённые изменения",
+	"Status": "Статус",
+	"Rules (%s)": "Правила (%s)",
+	"Connections (%s)": "Соединения (%s)",
+	"Chains (%s)": "Цепочки (%s)",
+	"Settings": "Настройки",
+	"Config file": "Файл конфигурации",
+	"File /etc/proxyrules.conf as is. The syntax is described at its top. Ctrl+S — check without saving.": "Файл /etc/proxyrules.conf как есть. Синтаксис описан в его начале. Ctrl+S — проверить без сохранения.",
+	"Done": "Готово",
+	"Cancel": "Отмена",
+	"Unknown connection or chain": "Неизвестное соединение или цепочка",
+	"Direct, no proxy": "Напрямую, без прокси",
+	"Blocked": "Заблокировано",
+	"Chain: %s": "Цепочка: %s",
+	"Single connection, no fallback": "Одно соединение, без запасных",
+	"Inline chain": "Цепочка в правиле",
+	"Chains": "Цепочки",
+	"Connections": "Соединения",
+	"Other": "Другое",
+	"inline chain…": "цепочка в правиле…",
+	"Checked top to bottom, the first match wins. Drag ⋮⋮ or use ↑ ↓ to reorder; double-click a rule to edit; +R / +G add a rule / group right below.": "Проверяются сверху вниз, срабатывает первое подходящее. Порядок — перетаскиванием за ⋮⋮ или кнопками ↑ ↓; двойной щелчок — изменить правило; +R / +G — добавить правило / группу сразу под строкой.",
+	"Condition": "Условие",
+	"Target": "Цель",
+	"Comment": "Комментарий",
+	"Nothing matches the filter.": "Под фильтр ничего не подходит.",
+	"No rules yet. ": "Правил пока нет. ",
+	"+ Rule": "+ Правило",
+	"Add a rule": "Добавить правило",
+	"+ Group": "+ Группа",
+	"Add a heading for a group of rules": "Добавить заголовок группы правил",
+	"and": "и",
+	"Everything except": "Всё, кроме",
+	"not ": "не ",
+	"Edit it on the Connections tab": "Изменяется на вкладке «Соединения»",
+	"Not recognized as a rule": "Не распознано как правило",
+	"Drag to move": "Перетащите, чтобы переместить",
+	"Move up": "Выше",
+	"Move down": "Ниже",
+	"Edit": "Изменить",
+	"Duplicate": "Дублировать",
+	"Add a rule below this one": "Добавить правило под этим",
+	"Start a new group below this rule": "Начать новую группу под этим правилом",
+	"Delete": "Удалить",
+	"Drag to move the whole group": "Перетащите, чтобы переместить всю группу",
+	"(separator)": "(разделитель)",
+	"Add a rule at the top of this group": "Добавить правило в начало этой группы",
+	"Add a group below this one": "Добавить группу под этой",
+	"Edit heading": "Изменить заголовок",
+	"Delete heading (rules stay)": "Удалить заголовок (правила останутся)",
+	"If": "Если",
+	"is": "совпадает",
+	"is not": "не совпадает",
+	"Remove condition": "Убрать условие",
+	"optional": "необязательно",
+	"Enter at least one value.": "Введите хотя бы одно значение.",
+	"Choose a target.": "Выберите цель.",
+	"+ and": "+ и",
+	"Add a condition that must also match": "Добавить условие, которое тоже должно выполняться",
+	"Several values in one field — separated by commas, any of them matches.": "Несколько значений в одном поле — через запятую, подходит любое.",
+	"Go via": "Через",
+	"choose lists…": "выберите списки…",
+	"choose protocols…": "выберите протоколы…",
+	"Choose lists": "Выбрать списки",
+	"Choose protocols": "Выбрать протоколы",
+	"Group heading": "Заголовок группы",
+	"Enter — done, Shift+Enter — new line, Esc — undo": "Enter — готово, Shift+Enter — новая строка, Esc — отменить",
+	"Done (Enter)": "Готово (Enter)",
+	"Undo changes (Esc)": "Отменить изменения (Esc)",
+	"This line is not recognized as a rule — edit it as text:": "Эта строка не распознана как правило — измените её как текст:",
+	"chain %s": "цепочка %s",
+	"%s rule": "правил: %s",
+	"%s rules": "правил: %s",
+	"Name: Latin letters, digits and \"-\", up to 32 characters.": "Имя: латинские буквы, цифры и «-», до 32 символов.",
+	"\"%s\" is reserved.": "«%s» зарезервировано.",
+	"\"%s\" is already used.": "«%s» уже занято.",
+	"%s is used by: %s.\nThe file won't pass the check until those are changed. Delete anyway?": "%s используется: %s.\nФайл не пройдёт проверку, пока их не изменить. Всё равно удалить?",
+	"used by %s": "используется: %s",
+	"not used": "не используется",
+	"A vless:// link as the server gave it, or an OpenWrt interface (AmneziaWG, WireGuard…).": "Ссылка vless:// в том виде, как её выдал сервер, или интерфейс OpenWrt (AmneziaWG, WireGuard…).",
+	"Double-click to see the full link": "Двойной щелчок — показать ссылку целиком",
+	"No connections yet.": "Соединений пока нет.",
+	"+ Connection": "+ Соединение",
+	"Add a connection": "Добавить соединение",
+	"The first live connection in order is used; when a higher-priority one comes back, traffic switches back to it. A chain holds only connections and direct.": "Используется первое живое соединение по порядку; когда более приоритетное оживает, трафик возвращается на него. В цепочке только соединения и direct.",
+	"No chains yet.": "Цепочек пока нет.",
+	"+ Chain": "+ Цепочка",
+	"Add a chain": "Добавить цепочку",
+	"vless://…  or  iface:awg0": "vless://…  или  iface:awg0",
+	"The link must start with vless:// or iface:": "Ссылка должна начинаться с vless:// или iface:",
+	"Name": "Имя",
+	"renaming updates rules and chains that use it": "при переименовании правила и цепочки обновятся",
+	"Link": "Ссылка",
+	"+ add…": "+ добавить…",
+	"Earlier": "Раньше",
+	"Later": "Позже",
+	"Remove": "Убрать",
+	"Add at least one connection.": "Добавьте хотя бы одно соединение.",
+	"renaming updates rules that use it": "при переименовании правила обновятся",
+	"Order": "Порядок",
+	"Fine to leave as is. An empty field means the default value.": "Можно оставить как есть. Пустое поле — значение по умолчанию.",
+	"default (%s)": "по умолчанию (%s)",
+	"Delete this line": "Удалить эту строку",
+	"Unknown setting": "Неизвестная настройка",
+	"Unknown error": "Неизвестная ошибка",
+	"No errors": "Ошибок нет",
+	"Saved and applied": "Сохранено и применено",
+	"Saved (service is not running)": "Сохранено (сервис не запущен)",
+	"Discard all unsaved changes?": "Отменить все несохранённые изменения?",
+	"Update proxyrules to %s? A running service will be restarted.": "Обновить proxyrules до %s? Работающий сервис будет перезапущен.",
+	"Failed": "Не получилось",
+	"Interface language": "Язык интерфейса",
+	"The language of this page and of error messages.": "Язык этой страницы и сообщений об ошибках.",
+};
+
+// "line N: …" from gen.uc stays English in the protocol; shown translated
+function lineText(s) {
+	return LANG == 'ru' ? String(s).replace(/^line (\d+):/gm, 'строка $1:') : s;
+}
 
 function ago(ts) {
 	if (!ts) return '—';
 	const s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
-	if (s < 90) return s + ' s';
-	if (s < 5400) return Math.round(s / 60) + ' min';
-	if (s < 129600) return Math.round(s / 3600) + ' h';
-	return Math.round(s / 86400) + ' d';
+	if (s < 90) return tr('%s s', s);
+	if (s < 5400) return tr('%s min', Math.round(s / 60));
+	if (s < 129600) return tr('%s h', Math.round(s / 3600));
+	return tr('%s d', Math.round(s / 86400));
 }
 
 const LISTS = [ 'anime', 'block', 'cloudflare', 'cloudfront', 'digitalocean', 'discord', 'geoblock',
@@ -30,10 +215,10 @@ const LISTS = [ 'anime', 'block', 'cloudflare', 'cloudfront', 'digitalocean', 'd
 const PROTOCOLS = [ 'bittorrent', 'tls', 'http', 'quic', 'stun', 'dtls', 'ssh', 'rdp', 'ntp' ];
 
 const PLACEHOLDERS = {
-	domain: 'upwork.com, static-upwork.com',
+	domain: 'example.com, example.org',
 	list: 'discord',
 	ip: '203.0.113.0/24',
-	src: '192.168.1.15',
+	src: '192.168.1.50',
 	port: '443, 50000-65535',
 	protocol: 'bittorrent',
 };
@@ -171,7 +356,7 @@ function normalizeValues(kind, raw) {
 // vless:// vless://… → "vless · reality · 1.2.3.4:443" — no secrets
 function linkSummary(link) {
 	let m = link.match(/^iface:(.+)$/);
-	if (m) return 'interface ' + m[1];
+	if (m) return tr('interface %s', m[1]);
 	m = link.match(/^vless:\/\/[^@]+@([^:/?#]+):([0-9]+)\/?(\?[^#]*)?/);
 	if (!m) return link.replace(/:\/\/.*/, '://…');
 	const q = {};
@@ -186,9 +371,9 @@ function linkSummary(link) {
 // ─────────────────────────────────────────────────────────────── view
 
 function nodeState(n) {
-	if (n.up === true) return E('span', { style: 'color:#2a2' }, '● up');
-	if (n.up === false) return E('span', { style: 'color:#d33' }, '● not responding');
-	return E('span', { style: 'color:#888' }, '○ checking');
+	if (n.up === true) return E('span', { style: 'color:#2a2' }, tr('● up'));
+	if (n.up === false) return E('span', { style: 'color:#d33' }, tr('● not responding'));
+	return E('span', { style: 'color:#888' }, tr('○ checking'));
 }
 
 // User text only as text nodes (a string child in E() goes in as innerHTML)
@@ -317,7 +502,7 @@ return view.extend({
 
 	renderVersion(st) {
 		const u = this.update, up = st.upgrade;
-		const line = [ E('strong', 'Version: '), st.version || 'unknown' ];
+		const line = [ E('strong', tr('Version: ')), st.version || tr('unknown') ];
 
 		// The update has finished and the version changed — the page is different now, reload
 		if (up && up.done && up.ok && st.version != this.loadedVersion) {
@@ -325,13 +510,13 @@ return view.extend({
 				this.reloading = true;
 				window.setTimeout(() => location.reload(), 1500);
 			}
-			return E('p', { class: 'alert-message success' }, `Updated to ${st.version}, reloading the page…`);
+			return E('p', { class: 'alert-message success' }, tr('Updated to %s, reloading the page…', st.version));
 		}
 
 		if (up && (!up.done || this.upgrading)) {
 			const out = [ E('p', {}, line) ];
-			if (!up.done) out.push(E('p', { class: 'alert-message notice' }, [ E('span', { class: 'spinning' }, 'Updating…') ]));
-			else out.push(E('p', { class: 'alert-message error' }, 'Update failed:'));
+			if (!up.done) out.push(E('p', { class: 'alert-message notice' }, [ E('span', { class: 'spinning' }, tr('Updating…')) ]));
+			else out.push(E('p', { class: 'alert-message error' }, tr('Update failed:')));
 			if (up.log) out.push(E('pre', { style: 'white-space:pre-wrap;font-size:90%' }, [ up.log ]));
 			return E('div', {}, out);
 		}
@@ -339,15 +524,15 @@ return view.extend({
 		// Releases are checked only on a button press
 		const check = (label) => E('button', { class: 'btn cbi-button', click: ui.createHandlerFn(this, 'handleCheckUpdate') }, label);
 		if (u && u.newer)
-			line.push(' · ', E('strong', { style: 'color:#2a2' }, `${u.latest.replace(/^v/, '')} is available`), ' ',
-				u.url ? E('a', { href: u.url, target: '_blank', rel: 'noopener' }, 'release notes') : '', ' ',
-				E('button', { class: 'btn cbi-button cbi-button-action', click: ui.createHandlerFn(this, 'handleUpgrade', u.latest) }, 'Update'));
+			line.push(' · ', E('strong', { style: 'color:#2a2' }, tr('%s is available', u.latest.replace(/^v/, ''))), ' ',
+				u.url ? E('a', { href: u.url, target: '_blank', rel: 'noopener' }, tr('release notes')) : '', ' ',
+				E('button', { class: 'btn cbi-button cbi-button-action', click: ui.createHandlerFn(this, 'handleUpgrade', u.latest) }, tr('Update')));
 		else if (u)
 			line.push(u.error
-				? E('span', { style: 'color:#d33', title: u.error }, ' · could not check for updates ')
-				: E('span', { style: 'opacity:.6' }, ' · this is the latest release '), check('Check again'));
+				? E('span', { style: 'color:#d33', title: u.error }, tr(' · could not check for updates '))
+				: E('span', { style: 'opacity:.6' }, tr(' · this is the latest release ')), check(tr('Check again')));
 		else
-			line.push(' ', check('Check for updates'));
+			line.push(' ', check(tr('Check for updates')));
 		return E('p', {}, line);
 	},
 
@@ -355,33 +540,33 @@ return view.extend({
 		const out = [ this.renderVersion(st) ];
 
 		if (!st.running) {
-			out.push(E('p', { class: 'alert-message warning' }, 'Service is stopped.'));
+			out.push(E('p', { class: 'alert-message warning' }, tr('Service is stopped.')));
 			if (st.error)
-				out.push(E('pre', { class: 'alert-message error', style: 'white-space:pre-wrap' }, [ st.error ]));
+				out.push(E('pre', { class: 'alert-message error', style: 'white-space:pre-wrap' }, [ lineText(st.error) ]));
 		}
 
 		const s = st.status;
 		if (st.running && s) {
 			if (!s.api)
-				out.push(E('p', { class: 'alert-message warning' }, 'sing-box is not responding (still starting?)'));
+				out.push(E('p', { class: 'alert-message warning' }, tr('sing-box is not responding (still starting?)')));
 
 			const names = Object.keys(s.nodes || {});
 			if (names.length) {
 				out.push(E('table', { class: 'table' }, [
 					E('tr', { class: 'tr table-titles' }, [
-						E('th', { class: 'th' }, 'Connection'),
-						E('th', { class: 'th' }, 'Endpoint'),
-						E('th', { class: 'th' }, 'State'),
-						E('th', { class: 'th' }, 'Latency'),
-						E('th', { class: 'th' }, 'In this state for'),
+						E('th', { class: 'th' }, tr('Connection')),
+						E('th', { class: 'th' }, tr('Endpoint')),
+						E('th', { class: 'th' }, tr('State')),
+						E('th', { class: 'th' }, tr('Latency')),
+						E('th', { class: 'th' }, tr('In this state for')),
 					]),
 					...names.map((name) => {
 						const n = s.nodes[name];
 						return E('tr', { class: 'tr' }, [
 							E('td', { class: 'td' }, E('strong', [ name ])),
-							E('td', { class: 'td' }, [ n.kind == 'iface' ? 'interface ' + n.where : n.where ]),
+							E('td', { class: 'td' }, [ n.kind == 'iface' ? tr('interface %s', n.where) : n.where ]),
 							E('td', { class: 'td' }, nodeState(n)),
-							E('td', { class: 'td' }, n.delay != null ? n.delay + ' ms' : '—'),
+							E('td', { class: 'td' }, n.delay != null ? tr('%s ms', n.delay) : '—'),
 							E('td', { class: 'td' }, ago(n.since)),
 						]);
 					}),
@@ -390,13 +575,13 @@ return view.extend({
 
 			const chains = Object.keys(s.chains || {});
 			if (chains.length) {
-				out.push(E('p', { style: 'margin-top:1em' }, E('strong', 'Chains (bold — where traffic goes right now):')));
+				out.push(E('p', { style: 'margin-top:1em' }, E('strong', tr('Chains (bold — where traffic goes right now):'))));
 				// Two columns: the name (as wide as the longest one) and the members
 				out.push(E('div', { style: 'display:grid;grid-template-columns:max-content 1fr;gap:.3em 1.5em;margin-left:1em' }, chains.flatMap((key) => {
 					const c = s.chains[key];
 					// Chains given right in a rule have a key like "TR_DE_UK" — "_" is not allowed in names
 					const name = key.includes('_')
-						? E('em', { style: 'opacity:.7' }, 'inline')
+						? E('em', { style: 'opacity:.7' }, tr('inline'))
 						: E('strong', {}, [ key ]);
 					const parts = [];
 					c.members.forEach((m, i) => {
@@ -404,7 +589,7 @@ return view.extend({
 						parts.push(m == c.active ? E('strong', { style: 'color:#2a2' }, [ m ]) : E('span', { style: 'opacity:.55' }, [ m ]));
 					});
 					if (c.active && c.active.endsWith('~auto'))
-						parts.push(E('em', { style: 'color:#d33' }, '  — all down, sing-box is looking for a live one itself'));
+						parts.push(E('em', { style: 'color:#d33' }, tr('  — all down, sing-box is looking for a live one itself')));
 					return [E('div', {}, name), E('div', {}, parts)];
 				})));
 			}
@@ -414,19 +599,19 @@ return view.extend({
 				const failed = lists.filter((l) => s.lists[l].error);
 				const oldest = Math.min(...lists.map((l) => s.lists[l].updated || 0));
 				out.push(E('p', { style: 'margin-top:1em' }, [
-					`Lists: ${lists.length}, oldest updated ${ago(oldest)} ago.`,
-					failed.length ? E('span', { style: 'color:#d33' }, [ ` Failed to update: ${failed.join(', ')}.` ]) : '',
+					tr('Lists: %s, oldest updated %s ago.', lists.length, ago(oldest)),
+					failed.length ? E('span', { style: 'color:#d33' }, [ tr(' Failed to update: %s.', failed.join(', ')) ]) : '',
 				]));
 			}
 
-			out.push(E('p', { style: 'opacity:.6;font-size:90%' }, `Checked ${ago(s.updated)} ago.`));
+			out.push(E('p', { style: 'opacity:.6;font-size:90%' }, tr('Checked %s ago.', ago(s.updated))));
 		}
 
 		out.push(E('div', { class: 'cbi-page-actions', style: 'text-align:left' }, st.running ? [
-			E('button', { class: 'btn cbi-button', click: ui.createHandlerFn(this, 'handleService', 'restart') }, 'Restart'), ' ',
-			E('button', { class: 'btn cbi-button cbi-button-negative', click: ui.createHandlerFn(this, 'handleService', 'stop') }, 'Stop'),
+			E('button', { class: 'btn cbi-button', click: ui.createHandlerFn(this, 'handleService', 'restart') }, tr('Restart')), ' ',
+			E('button', { class: 'btn cbi-button cbi-button-negative', click: ui.createHandlerFn(this, 'handleService', 'stop') }, tr('Stop')),
 		] : [
-			E('button', { class: 'btn cbi-button cbi-button-positive', click: ui.createHandlerFn(this, 'handleService', 'start') }, 'Start'),
+			E('button', { class: 'btn cbi-button cbi-button-positive', click: ui.createHandlerFn(this, 'handleService', 'start') }, tr('Start')),
 		]));
 
 		return out;
@@ -437,6 +622,7 @@ return view.extend({
 	},
 
 	render([ conf, st ]) {
+		LANG = st.lang == 'ru' ? 'ru' : 'en';
 		if (!document.getElementById('proxyrules-css'))
 			document.head.appendChild(E('style', { id: 'proxyrules-css' }, [ CSS ]));
 
@@ -465,7 +651,7 @@ return view.extend({
 		}, [ this.savedText ]);
 
 		this.filterInput = E('input', {
-			class: 'cbi-input-text pr-filter', type: 'search', placeholder: 'Filter rules…',
+			class: 'cbi-input-text pr-filter', type: 'search', placeholder: tr('Filter rules…'),
 			input: () => this.renderRuleList(),
 		});
 		this.ruleList = E('div', { class: 'pr-list pr-rules' });
@@ -474,13 +660,13 @@ return view.extend({
 		this.body = E('div', { class: 'pr-body' });
 		this.result = E('div');
 		this.dirtyNode = E('span', { class: 'pr-dirty' });
-		this.revertBtn = E('button', { class: 'btn cbi-button cbi-button-reset', click: ui.createHandlerFn(this, 'handleRevert') }, 'Revert');
+		this.revertBtn = E('button', { class: 'btn cbi-button cbi-button-reset', click: ui.createHandlerFn(this, 'handleRevert') }, tr('Revert'));
 
 		this.actionsNode = E('div', { class: 'cbi-page-actions pr-bar' }, [
 			this.dirtyNode,
 			this.revertBtn,
-			E('button', { class: 'btn cbi-button', title: 'Ctrl+S', click: ui.createHandlerFn(this, 'handleCheck') }, 'Check'),
-			E('button', { class: 'btn cbi-button cbi-button-apply', click: ui.createHandlerFn(this, 'handleApply') }, 'Save & Apply'),
+			E('button', { class: 'btn cbi-button', title: 'Ctrl+S', click: ui.createHandlerFn(this, 'handleCheck') }, tr('Check')),
+			E('button', { class: 'btn cbi-button cbi-button-apply', click: ui.createHandlerFn(this, 'handleApply') }, tr('Save & Apply')),
 		]);
 
 		window.addEventListener('beforeunload', (ev) => {
@@ -526,7 +712,7 @@ return view.extend({
 
 	updateDirty() {
 		const d = this.isDirty();
-		dom.content(this.dirtyNode, d ? '● Unsaved changes' : '');
+		dom.content(this.dirtyNode, d ? tr('● Unsaved changes') : '');
 		this.revertBtn.disabled = !d;
 	},
 
@@ -539,12 +725,12 @@ return view.extend({
 	renderAll() {
 		const count = (k) => this.items.filter((it) => it.kind == k).length;
 		const tabs = [
-			[ 'status', 'Status', {} ],
-			[ 'rules', `Rules (${count('rule')})`, { rule: true, raw: true, note: true } ],
-			[ 'conns', `Connections (${count('conn')})`, { conn: true } ],
-			[ 'chains', `Chains (${count('chain')})`, { chain: true } ],
-			[ 'settings', 'Settings', { setting: true } ],
-			[ 'text', 'Config file', {} ],
+			[ 'status', tr('Status'), {} ],
+			[ 'rules', tr('Rules (%s)', count('rule')), { rule: true, raw: true, note: true } ],
+			[ 'conns', tr('Connections (%s)', count('conn')), { conn: true } ],
+			[ 'chains', tr('Chains (%s)', count('chain')), { chain: true } ],
+			[ 'settings', tr('Settings'), { setting: true } ],
+			[ 'text', tr('Config file'), {} ],
 		];
 		this.rowEls = new Map();
 		dom.content(this.tabsNode, tabs.map(([ id, label, kinds ]) => {
@@ -563,7 +749,7 @@ return view.extend({
 		else if (this.tab == 'chains') dom.content(this.body, this.renderChainsTab());
 		else if (this.tab == 'settings') dom.content(this.body, this.renderSettingsTab());
 		else dom.content(this.body, [
-			E('p', { class: 'cbi-section-descr' }, 'File /etc/proxyrules.conf as is. The syntax is described at its top. Ctrl+S — check without saving.'),
+			E('p', { class: 'cbi-section-descr' }, tr('File /etc/proxyrules.conf as is. The syntax is described at its top. Ctrl+S — check without saving.')),
 			this.textarea,
 		]);
 		// Check and save are about the file — the status tab doesn't have them
@@ -675,8 +861,8 @@ return view.extend({
 
 	editorButtons(err) {
 		return E('div', { class: 'pr-line' }, [
-			E('button', { class: 'btn cbi-button cbi-button-positive', click: (ev) => { ev.preventDefault(); this.finishEdit(true); } }, 'Done'),
-			E('button', { class: 'btn cbi-button', click: (ev) => { ev.preventDefault(); this.finishEdit(false); } }, 'Cancel'),
+			E('button', { class: 'btn cbi-button cbi-button-positive', click: (ev) => { ev.preventDefault(); this.finishEdit(true); } }, tr('Done')),
+			E('button', { class: 'btn cbi-button', click: (ev) => { ev.preventDefault(); this.finishEdit(false); } }, tr('Cancel')),
 			err,
 		]);
 	},
@@ -724,12 +910,12 @@ return view.extend({
 
 	targetChip(target) {
 		const { conns, chains } = this.names();
-		let cls = 'pr-t-unknown', label = target, title = 'Unknown connection or chain';
-		if (target == 'direct') { cls = ''; title = 'Direct, no proxy'; }
-		else if (target == 'block') { cls = 'pr-t-block'; title = 'Blocked'; }
-		else if (chains[target]) { cls = 'pr-t-chain'; title = 'Chain: ' + chains[target].join(' → '); }
-		else if (conns.includes(target)) { cls = 'pr-t-conn'; title = 'Single connection, no fallback'; }
-		else if (target.includes(',')) { cls = 'pr-t-chain'; label = target.split(',').join(' → '); title = 'Inline chain'; }
+		let cls = 'pr-t-unknown', label = target, title = tr('Unknown connection or chain');
+		if (target == 'direct') { cls = ''; title = tr('Direct, no proxy'); }
+		else if (target == 'block') { cls = 'pr-t-block'; title = tr('Blocked'); }
+		else if (chains[target]) { cls = 'pr-t-chain'; title = tr('Chain: %s', chains[target].join(' → ')); }
+		else if (conns.includes(target)) { cls = 'pr-t-conn'; title = tr('Single connection, no fallback'); }
+		else if (target.includes(',')) { cls = 'pr-t-chain'; label = target.split(',').join(' → '); title = tr('Inline chain'); }
 		return T('span', { class: 'pr-target ' + cls, title }, label);
 	},
 
@@ -737,15 +923,15 @@ return view.extend({
 	targetPicker(value) {
 		const names = this.names();
 		const known = this.targetNames();
-		const inline = E('input', { class: 'cbi-input-text', type: 'text', placeholder: 'TR, DE, direct', style: 'width:12em' });
+		const inline = E('input', { class: 'cbi-input-text', type: 'text', placeholder: 'DE, NL, direct', style: 'width:12em' });
 		const opt = (v, label) => E('option', { value: v }, [ label || v ]);
 		const sel = E('select', { class: 'cbi-input-select', change: () => {
 			inline.style.display = sel.value == '*inline' ? '' : 'none';
 			if (sel.value == '*inline') inline.focus();
 		} }, [
-			Object.keys(names.chains).length ? E('optgroup', { label: 'Chains' }, Object.keys(names.chains).map((n) => opt(n, `${n}  (${names.chains[n].join(' → ')})`))) : '',
-			names.conns.length ? E('optgroup', { label: 'Connections' }, names.conns.map((n) => opt(n))) : '',
-			E('optgroup', { label: 'Other' }, [ opt('direct'), opt('block'), opt('*inline', 'inline chain…') ]),
+			Object.keys(names.chains).length ? E('optgroup', { label: tr('Chains') }, Object.keys(names.chains).map((n) => opt(n, `${n}  (${names.chains[n].join(' → ')})`))) : '',
+			names.conns.length ? E('optgroup', { label: tr('Connections') }, names.conns.map((n) => opt(n))) : '',
+			E('optgroup', { label: tr('Other') }, [ opt('direct'), opt('block'), opt('*inline', tr('inline chain…')) ]),
 		].filter((x) => x));
 
 		if (known.includes(value)) sel.value = value;
@@ -773,7 +959,7 @@ return view.extend({
 		return [
 			E('div', { class: 'pr-toolbar' }, [
 				this.filterInput,
-				E('span', { style: 'opacity:.65;font-size:90%;flex:1' }, 'Checked top to bottom, the first match wins. Drag ⋮⋮ or use ↑ ↓ to reorder; double-click a rule to edit; +R / +G add a rule / group right below.'),
+				E('span', { style: 'opacity:.65;font-size:90%;flex:1' }, tr('Checked top to bottom, the first match wins. Drag ⋮⋮ or use ↑ ↓ to reorder; double-click a rule to edit; +R / +G add a rule / group right below.')),
 			]),
 			this.ruleList,
 		];
@@ -788,7 +974,7 @@ return view.extend({
 	renderRuleList() {
 		const q = this.filterInput.value.trim().toLowerCase();
 		const rows = [
-			E('div', { class: 'pr-row pr-head' }, [ E('span'), E('span', 'Condition'), E('span', 'Target'), E('span', 'Comment'), E('span') ]),
+			E('div', { class: 'pr-row pr-head' }, [ E('span'), E('span', tr('Condition')), E('span', tr('Target')), E('span', tr('Comment')), E('span') ]),
 		];
 		this.rowEls = new Map();
 		let inGroup = false;   // under a heading, up to a blank line
@@ -807,10 +993,10 @@ return view.extend({
 		}
 		// Completely empty — nothing to add from, so the buttons are here
 		if (rows.length == 1)
-			rows.push(q ? E('div', { class: 'pr-empty' }, 'Nothing matches the filter.') : E('div', { class: 'pr-empty' }, [
-				'No rules yet. ',
-				btn('+ Rule', 'Add a rule', () => this.addRule(), 'cbi-button-add'), ' ',
-				btn('+ Group', 'Add a heading for a group of rules', () => this.addGroup(), ''),
+			rows.push(q ? E('div', { class: 'pr-empty' }, tr('Nothing matches the filter.')) : E('div', { class: 'pr-empty' }, [
+				tr('No rules yet. '),
+				btn(tr('+ Rule'), tr('Add a rule'), () => this.addRule(), 'cbi-button-add'), ' ',
+				btn(tr('+ Group'), tr('Add a heading for a group of rules'), () => this.addGroup(), ''),
 			]));
 		dom.content(this.ruleList, rows);
 		if (this.ruleList.querySelector('.pr-flash')) this.clearFlash();
@@ -834,9 +1020,9 @@ return view.extend({
 		if (it.kind == 'rule') {
 			const conds = [];
 			it.conds.forEach((c, i) => {
-				if (i) conds.push(E('span', { class: 'pr-and' }, 'and'));
-				conds.push(E('span', { class: 'pr-cond' + (c.neg ? ' pr-neg' : ''), title: c.neg ? 'Everything except' : '' }, [
-					T('span', { class: 'pr-tag pr-tag-' + c.type }, (c.neg ? 'not ' : '') + c.type),
+				if (i) conds.push(E('span', { class: 'pr-and' }, tr('and')));
+				conds.push(E('span', { class: 'pr-cond' + (c.neg ? ' pr-neg' : ''), title: c.neg ? tr('Everything except') : '' }, [
+					T('span', { class: 'pr-tag pr-tag-' + c.type }, (c.neg ? tr('not ') : '') + c.type),
 					c.values.join(', '),
 				]));
 			});
@@ -850,22 +1036,22 @@ return view.extend({
 			// an unrecognized line or a connection/chain in the middle of the rules
 			const struct = STRUCT[it.kind];
 			main = [
-				T('div', { class: 'pr-c-conds pr-c-wide pr-mono', title: struct ? 'Edit it on the Connections tab' : 'Not recognized as a rule' },
+				T('div', { class: 'pr-c-conds pr-c-wide pr-mono', title: struct ? tr('Edit it on the Connections tab') : tr('Not recognized as a rule') },
 					it.lines.join('\n')),
 			];
 		}
 
 		const row = E('div', { class: 'pr-row' + (it == this.flash ? ' pr-flash' : ''), dblclick: (ev) => ev.target.closest('button') || STRUCT[it.kind] || this.edit(it) }, [
-			STRUCT[it.kind] ? E('span') : E('span', { class: 'pr-handle', title: 'Drag to move', mousedown: () => row.draggable = true, mouseup: () => row.draggable = false }, [ '⋮⋮' ]),
+			STRUCT[it.kind] ? E('span') : E('span', { class: 'pr-handle', title: tr('Drag to move'), mousedown: () => row.draggable = true, mouseup: () => row.draggable = false }, [ '⋮⋮' ]),
 			...main,
 			E('div', { class: 'pr-c-actions pr-actions' }, STRUCT[it.kind] ? [] : [
-				btn('↑', 'Move up', () => this.step(it, -1)),
-				btn('↓', 'Move down', () => this.step(it, 1)),
-				btn('✎', 'Edit', () => this.edit(it)),
-				btn('⧉', 'Duplicate', () => this.duplicate(it)),
-				btn('+R', 'Add a rule below this one', () => this.insertRule(it)),
-				btn('+G', 'Start a new group below this rule', () => this.insertGroup(it)),
-				btn('✕', 'Delete', () => this.remove(it), 'pr-icon cbi-button-negative'),
+				btn('↑', tr('Move up'), () => this.step(it, -1)),
+				btn('↓', tr('Move down'), () => this.step(it, 1)),
+				btn('✎', tr('Edit'), () => this.edit(it)),
+				btn('⧉', tr('Duplicate'), () => this.duplicate(it)),
+				btn('+R', tr('Add a rule below this one'), () => this.insertRule(it)),
+				btn('+G', tr('Start a new group below this rule'), () => this.insertGroup(it)),
+				btn('✕', tr('Delete'), () => this.remove(it), 'pr-icon cbi-button-negative'),
 			]),
 		]);
 		this.errorsOf(it, row);
@@ -878,15 +1064,15 @@ return view.extend({
 		// Frames like "── Rules ────" are removed for display
 		const lines = noteText(it).split('\n').map((l) => l.replace(/^[─═━\-=\s]+|[─═━\-=\s]+$/g, '')).filter((l) => l != '');
 		const row = E('div', { class: 'pr-row pr-note', dblclick: (ev) => ev.target.closest('button') || this.edit(it) }, [
-			E('span', { class: 'pr-handle', title: 'Drag to move the whole group', mousedown: () => row.draggable = true, mouseup: () => row.draggable = false }, [ '⋮⋮' ]),
+			E('span', { class: 'pr-handle', title: tr('Drag to move the whole group'), mousedown: () => row.draggable = true, mouseup: () => row.draggable = false }, [ '⋮⋮' ]),
 			E('div', { class: 'pr-note-text' }, lines.length
 				? [ lines[0], ...lines.slice(1).map((l) => T('div', { class: 'pr-sub' }, l)) ]
-				: [ E('span', { class: 'pr-sub' }, '(separator)') ]),
+				: [ E('span', { class: 'pr-sub' }, tr('(separator)')) ]),
 			E('div', { class: 'pr-actions' }, [
-				btn('+R', 'Add a rule at the top of this group', () => this.insertRule(it)),
-				btn('+G', 'Add a group below this one', () => this.insertGroup(it)),
-				btn('✎', 'Edit heading', () => this.edit(it)),
-				btn('✕', 'Delete heading (rules stay)', () => this.remove(it), 'pr-icon cbi-button-negative'),
+				btn('+R', tr('Add a rule at the top of this group'), () => this.insertRule(it)),
+				btn('+G', tr('Add a group below this one'), () => this.insertGroup(it)),
+				btn('✎', tr('Edit heading'), () => this.edit(it)),
+				btn('✕', tr('Delete heading (rules stay)'), () => this.remove(it), 'pr-icon cbi-button-negative'),
 			]),
 		]);
 		this.dragSource(row, it);
@@ -1071,21 +1257,21 @@ return view.extend({
 				input: () => c.raw = val.value,
 			});
 			return E('div', { class: 'pr-line' }, [
-				E('span', { class: 'pr-label' }, i ? 'and' : 'If'),
+				E('span', { class: 'pr-label' }, i ? tr('and') : tr('If')),
 				E('select', { class: 'cbi-input-select', change: (ev) => { c.type = ev.target.value; renderConds(); } },
 					RULE_TYPES.map((t) => E('option', { value: t, selected: t == c.type ? '' : null }, [ t ]))),
 				E('select', { class: 'cbi-input-select', change: (ev) => c.neg = ev.target.value == '1' }, [
-					E('option', { value: '0' }, 'is'),
-					E('option', { value: '1', selected: c.neg ? '' : null }, 'is not'),
+					E('option', { value: '0' }, tr('is')),
+					E('option', { value: '1', selected: c.neg ? '' : null }, tr('is not')),
 				]),
 				val,
-				draft.length > 1 ? btn('✕', 'Remove condition', () => { draft.splice(i, 1); renderConds(); }, 'pr-icon cbi-button-negative') : '',
+				draft.length > 1 ? btn('✕', tr('Remove condition'), () => { draft.splice(i, 1); renderConds(); }, 'pr-icon cbi-button-negative') : '',
 			]);
 		}));
 		renderConds();
 
 		const target = this.targetPicker(it.target);
-		const comment = E('input', { class: 'cbi-input-text pr-grow', type: 'text', value: it.comment, placeholder: 'optional' });
+		const comment = E('input', { class: 'cbi-input-text pr-grow', type: 'text', value: it.comment, placeholder: tr('optional') });
 
 		this.pending = {
 			apply: () => {
@@ -1099,8 +1285,8 @@ return view.extend({
 					else conds.push({ neg: c.neg, type: c.type, values });
 				}
 				const t = target.value();
-				if (!conds.length) { dom.content(err, 'Enter at least one value.'); return false; }
-				if (!t) { dom.content(err, 'Choose a target.'); return false; }
+				if (!conds.length) { dom.content(err, tr('Enter at least one value.')); return false; }
+				if (!t) { dom.content(err, tr('Choose a target.')); return false; }
 				Object.assign(it, { conds, target: t, comment: comment.value.replace(/\s+/g, ' ').trim(), dirty: true, isNew: false });
 				this.errors.delete(it);
 				return true;
@@ -1112,11 +1298,11 @@ return view.extend({
 			box,
 			E('div', { class: 'pr-line' }, [
 				E('span', { class: 'pr-label' }),
-				btn('+ and', 'Add a condition that must also match', () => { draft.push({ neg: false, type: 'src', raw: '' }); renderConds(); }, ''),
-				E('span', { style: 'opacity:.6;font-size:90%' }, 'Several values in one field — separated by commas, any of them matches.'),
+				btn(tr('+ and'), tr('Add a condition that must also match'), () => { draft.push({ neg: false, type: 'src', raw: '' }); renderConds(); }, ''),
+				E('span', { style: 'opacity:.6;font-size:90%' }, tr('Several values in one field — separated by commas, any of them matches.')),
 			]),
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Go via'), ...target.nodes ]),
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Comment'), comment ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Go via')), ...target.nodes ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Comment')), comment ]),
 			this.editorButtons(err),
 		]);
 	},
@@ -1131,7 +1317,7 @@ return view.extend({
 		const update = () => {
 			const on = all.filter((v) => sel.has(v));
 			c.raw = on.join(', ');
-			dom.content(label, [ on.length ? on.join(', ') : 'choose ' + what + '…' ]);
+			dom.content(label, [ on.length ? on.join(', ') : tr(what == 'lists' ? 'choose lists…' : 'choose protocols…') ]);
 			label.classList.toggle('pr-ms-empty', !on.length);
 		};
 		const panel = E('div', { class: 'pr-ms-panel' }, all.map((v) => E('label', {}, [
@@ -1154,7 +1340,7 @@ return view.extend({
 				}
 			},
 		}, [
-			E('button', { class: 'cbi-input-select pr-ms-btn', type: 'button', title: 'Choose ' + what,
+			E('button', { class: 'cbi-input-select pr-ms-btn', type: 'button', title: tr(what == 'lists' ? 'Choose lists' : 'Choose protocols'),
 				click: (ev) => { ev.preventDefault(); wrap.classList.contains('pr-ms-open') ? close() : open(); } }, [ label ]),
 			panel,
 		]);
@@ -1168,8 +1354,8 @@ return view.extend({
 		const start = noteText(it);
 		const fit = () => text.rows = Math.max(1, text.value.split('\n').length);
 		const text = E('textarea', {
-			class: 'cbi-input-textarea pr-note-input', spellcheck: 'false', placeholder: 'Group heading',
-			title: 'Enter — done, Shift+Enter — new line, Esc — undo',
+			class: 'cbi-input-textarea pr-note-input', spellcheck: 'false', placeholder: tr('Group heading'),
+			title: tr('Enter — done, Shift+Enter — new line, Esc — undo'),
 			input: () => {
 				fit();
 				const t = text.value.replace(/\s+$/, '');
@@ -1197,8 +1383,8 @@ return view.extend({
 		return E('div', { class: 'pr-row pr-note' }, [
 			text,
 			E('div', { class: 'pr-actions', style: 'opacity:1' }, [
-				btn('✓', 'Done (Enter)', () => this.finishEdit(true)),
-				btn('↶', 'Undo changes (Esc)', () => this.finishEdit(false)),
+				btn('✓', tr('Done (Enter)'), () => this.finishEdit(true)),
+				btn('↶', tr('Undo changes (Esc)'), () => this.finishEdit(false)),
 			]),
 		]);
 	},
@@ -1217,7 +1403,7 @@ return view.extend({
 			cancel: () => {},
 		};
 		return E('div', { class: 'pr-edit', keydown: (ev) => this.editorKeys(ev) }, [
-			E('div', { style: 'opacity:.7;margin-bottom:.3em' }, 'This line is not recognized as a rule — edit it as text:'),
+			E('div', { style: 'opacity:.7;margin-bottom:.3em' }, tr('This line is not recognized as a rule — edit it as text:')),
 			input,
 			this.editorButtons(),
 		]);
@@ -1243,10 +1429,10 @@ return view.extend({
 		let rules = 0;
 		for (const it of this.items) {
 			if (it.kind == 'rule' && it.target.split(',').includes(name)) rules++;
-			else if (it.kind == 'chain' && it.members.includes(name)) out.push('chain ' + it.name);
+			else if (it.kind == 'chain' && it.members.includes(name)) out.push(tr('chain %s', it.name));
 			else if (it.kind == 'setting' && it.name == 'lists_via' && splitNames(it.value).includes(name)) out.push('@lists_via');
 		}
-		if (rules) out.unshift(rules + (rules == 1 ? ' rule' : ' rules'));
+		if (rules) out.unshift(tr(rules == 1 ? '%s rule' : '%s rules', rules));
 		return out;
 	},
 
@@ -1261,15 +1447,15 @@ return view.extend({
 	},
 
 	checkName(it, name) {
-		if (!NAME_RE.test(name)) return 'Name: Latin letters, digits and "-", up to 32 characters.';
-		if (name == 'direct' || name == 'block') return `"${name}" is reserved.`;
-		if (this.items.some((x) => x != it && (x.kind == 'conn' || x.kind == 'chain') && x.name == name)) return `"${name}" is already used.`;
+		if (!NAME_RE.test(name)) return tr('Name: Latin letters, digits and "-", up to 32 characters.');
+		if (name == 'direct' || name == 'block') return tr('"%s" is reserved.', name);
+		if (this.items.some((x) => x != it && (x.kind == 'conn' || x.kind == 'chain') && x.name == name)) return tr('"%s" is already used.', name);
 		return null;
 	},
 
 	confirmRemove(it) {
 		const used = this.usedBy(it.name);
-		if (used.length && !confirm(`${it.name} is used by: ${used.join(', ')}.\nThe file won't pass the check until those are changed. Delete anyway?`))
+		if (used.length && !confirm(tr('%s is used by: %s.\nThe file won\'t pass the check until those are changed. Delete anyway?', it.name, used.join(', '))))
 			return;
 		this.remove(it);
 	},
@@ -1285,10 +1471,10 @@ return view.extend({
 		const r = E('div', { class: 'pr-row' + (it == this.flash ? ' pr-flash' : ''), dblclick: (ev) => ev.target.closest('button') || this.edit(it) }, [
 			T('strong', {}, it.name),
 			cells,
-			T('div', { class: 'pr-comment' }, used.length ? 'used by ' + used.join(', ') : 'not used'),
+			T('div', { class: 'pr-comment' }, used.length ? tr('used by %s', used.join(', ')) : tr('not used')),
 			E('div', { class: 'pr-c-actions pr-actions' }, [
-				btn('✎', 'Edit', () => this.edit(it)),
-				btn('✕', 'Delete', () => this.confirmRemove(it), 'pr-icon cbi-button-negative'),
+				btn('✎', tr('Edit'), () => this.edit(it)),
+				btn('✕', tr('Delete'), () => this.confirmRemove(it), 'pr-icon cbi-button-negative'),
 			]),
 		]);
 		this.errorsOf(it, r);
@@ -1300,14 +1486,14 @@ return view.extend({
 		const conns = this.items.filter((it) => it.kind == 'conn');
 		this.clearFlash();
 		return [
-			E('p', { class: 'cbi-section-descr' }, 'A vless:// link as the server gave it, or an OpenWrt interface (AmneziaWG, WireGuard…).'),
+			E('p', { class: 'cbi-section-descr' }, tr('A vless:// link as the server gave it, or an OpenWrt interface (AmneziaWG, WireGuard…).')),
 			E('div', { class: 'pr-list pr-conns' }, [
-				...conns.map((it) => this.structRow(it, E('div', { class: 'pr-mono', title: 'Double-click to see the full link' }, [
+				...conns.map((it) => this.structRow(it, E('div', { class: 'pr-mono', title: tr('Double-click to see the full link') }, [
 					linkSummary(it.link), it.comment ? T('span', { class: 'pr-comment' }, '  # ' + it.comment) : '',
 				]))),
-				conns.length ? '' : E('div', { class: 'pr-empty' }, 'No connections yet.'),
+				conns.length ? '' : E('div', { class: 'pr-empty' }, tr('No connections yet.')),
 			].filter((x) => x)),
-			btn('+ Connection', 'Add a connection', () => this.addStruct({ kind: 'conn', name: '', link: '', comment: '' }, [ 'conn', 'setting' ]), 'cbi-button-add'),
+			btn(tr('+ Connection'), tr('Add a connection'), () => this.addStruct({ kind: 'conn', name: '', link: '', comment: '' }, [ 'conn', 'setting' ]), 'cbi-button-add'),
 		];
 	},
 
@@ -1315,14 +1501,14 @@ return view.extend({
 		const chains = this.items.filter((it) => it.kind == 'chain');
 		this.clearFlash();
 		return [
-			E('p', { class: 'cbi-section-descr' }, 'The first live connection in order is used; when a higher-priority one comes back, traffic switches back to it. A chain holds only connections and direct.'),
+			E('p', { class: 'cbi-section-descr' }, tr('The first live connection in order is used; when a higher-priority one comes back, traffic switches back to it. A chain holds only connections and direct.')),
 			E('div', { class: 'pr-list pr-conns' }, [
 				...chains.map((it) => this.structRow(it, E('div', {}, [
 					it.members.join(' → '), it.comment ? T('span', { class: 'pr-comment' }, '  # ' + it.comment) : '',
 				]))),
-				chains.length ? '' : E('div', { class: 'pr-empty' }, 'No chains yet.'),
+				chains.length ? '' : E('div', { class: 'pr-empty' }, tr('No chains yet.')),
 			].filter((x) => x)),
-			btn('+ Chain', 'Add a chain', () => this.addStruct({ kind: 'chain', name: '', members: [], comment: '' }, [ 'chain', 'conn', 'setting' ]), 'cbi-button-add'),
+			btn(tr('+ Chain'), tr('Add a chain'), () => this.addStruct({ kind: 'chain', name: '', members: [], comment: '' }, [ 'chain', 'conn', 'setting' ]), 'cbi-button-add'),
 		];
 	},
 
@@ -1350,21 +1536,21 @@ return view.extend({
 	connEditor(it) {
 		const err = E('span', { class: 'pr-err' });
 		const name = E('input', { class: 'cbi-input-text', type: 'text', value: it.name, placeholder: 'DE', style: 'width:10em' });
-		const link = E('textarea', { class: 'cbi-input-textarea pr-grow', rows: 3, spellcheck: 'false', placeholder: 'vless://…  or  iface:awg0',
+		const link = E('textarea', { class: 'cbi-input-textarea pr-grow', rows: 3, spellcheck: 'false', placeholder: tr('vless://…  or  iface:awg0'),
 			style: 'font-family:monospace;font-size:90%;word-break:break-all' }, [ it.link ]);
-		const comment = E('input', { class: 'cbi-input-text pr-grow', type: 'text', value: it.comment, placeholder: 'optional' });
+		const comment = E('input', { class: 'cbi-input-text pr-grow', type: 'text', value: it.comment, placeholder: tr('optional') });
 		this.structPending(it, err, () => {
 			const n = name.value.trim(), l = link.value.replace(/\s+/g, '');
 			const bad = this.checkName(it, n);
 			if (bad) return bad;
-			if (!/^(vless:\/\/|iface:)./.test(l)) return 'The link must start with vless:// or iface:';
+			if (!/^(vless:\/\/|iface:)./.test(l)) return tr('The link must start with vless:// or iface:');
 			return { name: n, link: l, comment: comment.value.replace(/\s+/g, ' ').trim() };
 		});
 		return E('div', { class: 'pr-edit', keydown: (ev) => this.editorKeys(ev) }, [
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Name'), name,
-				it.isNew ? '' : E('span', { style: 'opacity:.6;font-size:90%' }, 'renaming updates rules and chains that use it') ]),
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Link'), link ]),
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Comment'), comment ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Name')), name,
+				it.isNew ? '' : E('span', { style: 'opacity:.6;font-size:90%' }, tr('renaming updates rules and chains that use it')) ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Link')), link ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Comment')), comment ]),
 			this.editorButtons(err),
 		]);
 	},
@@ -1373,22 +1559,22 @@ return view.extend({
 		const err = E('span', { class: 'pr-err' });
 		const members = it.members.slice();
 		const name = E('input', { class: 'cbi-input-text', type: 'text', value: it.name, placeholder: 'AUTO', style: 'width:10em' });
-		const comment = E('input', { class: 'cbi-input-text pr-grow', type: 'text', value: it.comment, placeholder: 'optional' });
+		const comment = E('input', { class: 'cbi-input-text pr-grow', type: 'text', value: it.comment, placeholder: tr('optional') });
 		const box = E('div', { style: 'display:flex;flex-wrap:wrap;align-items:center;gap:.2em' });
 		const renderMembers = () => {
 			const avail = [ ...this.names().conns, 'direct' ].filter((n) => !members.includes(n));
 			const add = E('select', { class: 'cbi-input-select', change: () => {
 				if (add.value) { members.push(add.value); renderMembers(); }
-			} }, [ E('option', { value: '' }, '+ add…'), ...avail.map((n) => E('option', { value: n }, [ n ])) ]);
+			} }, [ E('option', { value: '' }, tr('+ add…')), ...avail.map((n) => E('option', { value: n }, [ n ])) ]);
 			const move = (i, d) => { members.splice(i + d, 0, members.splice(i, 1)[0]); renderMembers(); };
 			dom.content(box, [
 				...members.flatMap((m, i) => [
 					i ? E('span', { style: 'opacity:.5' }, '→') : '',
 					E('span', { class: 'pr-chip' }, [
 						T('strong', {}, m),
-						i ? btn('‹', 'Earlier', () => move(i, -1)) : '',
-						i < members.length - 1 ? btn('›', 'Later', () => move(i, 1)) : '',
-						btn('✕', 'Remove', () => { members.splice(i, 1); renderMembers(); }),
+						i ? btn('‹', tr('Earlier'), () => move(i, -1)) : '',
+						i < members.length - 1 ? btn('›', tr('Later'), () => move(i, 1)) : '',
+						btn('✕', tr('Remove'), () => { members.splice(i, 1); renderMembers(); }),
 					].filter((x) => x)),
 				]).filter((x) => x),
 				avail.length ? add : '',
@@ -1399,14 +1585,14 @@ return view.extend({
 			const n = name.value.trim();
 			const bad = this.checkName(it, n);
 			if (bad) return bad;
-			if (!members.length) return 'Add at least one connection.';
+			if (!members.length) return tr('Add at least one connection.');
 			return { name: n, members: members.slice(), comment: comment.value.replace(/\s+/g, ' ').trim() };
 		});
 		return E('div', { class: 'pr-edit', keydown: (ev) => this.editorKeys(ev) }, [
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Name'), name,
-				it.isNew ? '' : E('span', { style: 'opacity:.6;font-size:90%' }, 'renaming updates rules that use it') ]),
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Order'), box ]),
-			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, 'Comment'), comment ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Name')), name,
+				it.isNew ? '' : E('span', { style: 'opacity:.6;font-size:90%' }, tr('renaming updates rules that use it')) ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Order')), box ]),
+			E('div', { class: 'pr-line' }, [ E('span', { class: 'pr-label' }, tr('Comment')), comment ]),
 			this.editorButtons(err),
 		]);
 	},
@@ -1425,7 +1611,17 @@ return view.extend({
 
 	renderSettingsTab() {
 		return [
-			E('p', { class: 'cbi-section-descr' }, 'Fine to leave as is. An empty field means the default value.'),
+			E('div', { class: 'cbi-value' }, [
+				E('label', { class: 'cbi-value-title' }, [ tr('Interface language') ]),
+				E('div', { class: 'cbi-value-field' }, [
+					E('select', { class: 'cbi-input-select', change: (ev) => this.handleLang(ev.target.value) }, [
+						E('option', { value: 'en', selected: LANG == 'en' ? '' : null }, 'English'),
+						E('option', { value: 'ru', selected: LANG == 'ru' ? '' : null }, 'Русский'),
+					]),
+					E('div', { class: 'cbi-value-description' }, [ tr('The language of this page and of error messages.') ]),
+				]),
+			]),
+			E('p', { class: 'cbi-section-descr' }, tr('Fine to leave as is. An empty field means the default value.')),
 			...SETTINGS.map((s) => {
 				const it = this.items.find((x) => x.kind == 'setting' && x.name == s.name);
 				const cur = it ? it.value : '';
@@ -1433,7 +1629,7 @@ return view.extend({
 				if (s.options || s.target) {
 					const opts = s.options || this.targetNames().filter((n) => n != 'block');
 					field = E('select', { class: 'cbi-input-select', change: (ev) => this.setSetting(s.name, ev.target.value) }, [
-						E('option', { value: '' }, [ `default (${s.def})` ]),
+						E('option', { value: '' }, [ tr('default (%s)', s.def) ]),
 						...opts.map((o) => E('option', { value: o, selected: o == cur ? '' : null }, [ o ])),
 						cur && !opts.includes(cur) ? E('option', { value: cur, selected: '' }, [ cur ]) : '',
 					].filter((x) => x));
@@ -1443,10 +1639,10 @@ return view.extend({
 						change: (ev) => this.setSetting(s.name, ev.target.value) });
 				const msgs = it && this.errors.get(it);
 				return E('div', { class: 'cbi-value' }, [
-					E('label', { class: 'cbi-value-title' }, [ s.title ]),
+					E('label', { class: 'cbi-value-title' }, [ tr(s.title) ]),
 					E('div', { class: 'cbi-value-field' }, [
 						field,
-						s.descr || it?.comment ? T('div', { class: 'cbi-value-description' }, s.descr || it.comment) : '',
+						s.descr || it?.comment ? T('div', { class: 'cbi-value-description' }, s.descr ? tr(s.descr) : it.comment) : '',
 						msgs ? T('div', { class: 'cbi-value-description', style: 'color:#d33' }, msgs.join('\n')) : '',
 					].filter((x) => x)),
 				]);
@@ -1457,8 +1653,8 @@ return view.extend({
 					T('label', { class: 'cbi-value-title', style: 'color:#d33' }, '@' + it.name),
 					E('div', { class: 'cbi-value-field' }, [
 						T('code', {}, it.value), ' ',
-						btn('✕', 'Delete this line', () => this.remove(it), 'pr-icon cbi-button-negative'),
-						T('div', { class: 'cbi-value-description', style: 'color:#d33' }, (this.errors.get(it) || [ 'Unknown setting' ]).join('\n')),
+						btn('✕', tr('Delete this line'), () => this.remove(it), 'pr-icon cbi-button-negative'),
+						T('div', { class: 'cbi-value-description', style: 'color:#d33' }, (this.errors.get(it) || [ tr('Unknown setting') ]).join('\n')),
 					]),
 				])),
 		];
@@ -1503,7 +1699,7 @@ return view.extend({
 	showResult(r, okText) {
 		dom.content(this.result, r.ok
 			? E('p', { class: 'alert-message success' }, [ okText + (r.summary ? ' (' + r.summary.replace(/^ok: /, '') + ')' : '') ])
-			: E('pre', { class: 'alert-message error', style: 'white-space:pre-wrap' }, [ r.errors || 'Unknown error' ]));
+			: E('pre', { class: 'alert-message error', style: 'white-space:pre-wrap' }, [ lineText(r.errors) || tr('Unknown error') ]));
 	},
 
 	afterCheck(text, r) {
@@ -1515,7 +1711,7 @@ return view.extend({
 		if (!this.closeEditor(true)) return Promise.resolve();
 		const text = this.getText();
 		return callCheck(text).then((r) => {
-			this.showResult(r, 'No errors');
+			this.showResult(r, tr('No errors'));
 			this.afterCheck(text, r);
 		});
 	},
@@ -1524,9 +1720,9 @@ return view.extend({
 		if (!this.closeEditor(true)) return Promise.resolve();
 		const text = this.getText();
 		return callSave(text).then((r) => {
-			this.showResult(r, r.restarted ? 'Saved and applied' : 'Saved (service is not running)');
+			this.showResult(r, r.restarted ? tr('Saved and applied') : tr('Saved (service is not running)'));
 			// "saved, but the service did not come up" — the file is written anyway
-			if (r.ok || /^saved,/.test(r.errors || '')) {
+			if (r.ok || r.saved) {
 				this.savedText = text;
 				if (this.tab != 'text') this.items = parseDoc(text);
 			}
@@ -1537,10 +1733,16 @@ return view.extend({
 	},
 
 	handleRevert() {
-		if (!confirm('Discard all unsaved changes?')) return;
+		if (!confirm(tr('Discard all unsaved changes?'))) return;
 		this.setText(this.savedText);
 		dom.content(this.result, []);
 		this.renderAll();
+	},
+
+	// Saved on the router right away; the page is reloaded in the new language
+	// (the browser asks first if there are unsaved changes)
+	handleLang(lang) {
+		return callSetLang(lang).then(() => location.reload());
 	},
 
 	handleCheckUpdate() {
@@ -1548,10 +1750,10 @@ return view.extend({
 	},
 
 	handleUpgrade(tag) {
-		if (!confirm(`Update proxyrules to ${tag.replace(/^v/, '')}? A running service will be restarted.`)) return;
+		if (!confirm(tr('Update proxyrules to %s? A running service will be restarted.', tag.replace(/^v/, '')))) return;
 		return callUpgrade(tag).then((r) => {
 			if (!r.ok) {
-				ui.addNotification(null, E('pre', { style: 'white-space:pre-wrap' }, [ r.errors || 'Failed' ]), 'error');
+				ui.addNotification(null, E('pre', { style: 'white-space:pre-wrap' }, [ r.errors || tr('Failed') ]), 'error');
 				return;
 			}
 			this.upgrading = true;
@@ -1562,7 +1764,7 @@ return view.extend({
 	handleService(action) {
 		return callService(action).then((r) => {
 			if (!r.ok)
-				ui.addNotification(null, E('pre', { style: 'white-space:pre-wrap' }, [ r.errors || 'Failed' ]), 'error');
+				ui.addNotification(null, E('pre', { style: 'white-space:pre-wrap' }, [ r.errors || tr('Failed') ]), 'error');
 			return this.refreshStatus();
 		});
 	},

@@ -11,6 +11,28 @@ const CHECK_DIR = '/tmp/proxyrules-check';
 const REPO = 'm0n5ter/ProxyRules';
 const UPGRADE_SH = '/tmp/proxyrules-install.sh';
 const UPGRADE_LOG = '/tmp/proxyrules-upgrade.log';
+const LANG_FILE = '/etc/proxyrules/lang';
+
+// Messages in the interface language; the English text is the key
+const RU = {
+	'file is empty': 'файл пуст',
+	'failed to write %s': 'не удалось записать %s',
+	'saved, but the service did not come up: %s': 'сохранено, но сервис не поднялся: %s',
+	'see logread -e proxyrules': 'см. logread -e proxyrules',
+	'unknown action': 'неизвестное действие',
+	'unexpected answer from GitHub': 'непонятный ответ GitHub',
+	'bad release tag': 'неверный тег релиза',
+	'an update is already running': 'обновление уже идёт',
+	'failed to download the installer: %s': 'не удалось скачать установщик: %s',
+};
+
+function lang() {
+	return trim(readfile(LANG_FILE) ?? '') == 'ru' ? 'ru' : 'en';
+}
+
+function tr(fmt, ...args) {
+	return sprintf(lang() == 'ru' ? (RU[fmt] ?? fmt) : fmt, ...args);
+}
 
 function sh(cmd) {
 	let p = popen(cmd + ' 2>&1', 'r');
@@ -35,7 +57,7 @@ function running() {
 // The directory is removed right away — it holds secrets.
 function check(content) {
 	if (type(content) != 'string' || trim(content) == '')
-		return { ok: false, errors: 'file is empty' };
+		return { ok: false, errors: tr('file is empty') };
 
 	system([ 'rm', '-rf', CHECK_DIR ]);
 	mkdir(CHECK_DIR, 0o700);
@@ -76,7 +98,7 @@ function latest() {
 	try { rel = r.rc == 0 ? json(r.out) : null; } catch (e) { }
 	if (type(rel?.tag_name) == 'string')
 		return { tag: rel.tag_name, url: rel.html_url };
-	return { error: r.out || 'unexpected answer from GitHub' };
+	return { error: r.out || tr('unexpected answer from GitHub') };
 }
 
 // The update runs as a separate process (setsid): install.sh reloads rpcd
@@ -109,11 +131,11 @@ const methods = {
 			let r = check(content);
 			if (!r.ok) return r;
 			if (!write_private(CONF, content))
-				return { ok: false, errors: `failed to write ${CONF}` };
+				return { ok: false, errors: tr('failed to write %s', CONF) };
 			if (running()) {
 				let s = sh(`${INIT} restart`);
 				if (!running())
-					return { ok: false, errors: 'saved, but the service did not come up: ' + (s.out || 'see logread -e proxyrules') };
+					return { ok: false, saved: true, errors: tr('saved, but the service did not come up: %s', s.out || tr('see logread -e proxyrules')) };
 				r.restarted = true;
 			}
 			return r;
@@ -127,7 +149,7 @@ const methods = {
 			if (a == 'start') { sh(`${INIT} enable`); s = sh(`${INIT} start`); }
 			else if (a == 'stop') { sh(`${INIT} disable`); s = sh(`${INIT} stop`); }
 			else if (a == 'restart') s = sh(`${INIT} restart`);
-			else return { ok: false, errors: 'unknown action' };
+			else return { ok: false, errors: tr('unknown action') };
 			let up = running();
 			return { ok: a == 'stop' ? !up : up, errors: s.out };
 		}
@@ -143,8 +165,19 @@ const methods = {
 				error: readfile(`${RUN}/error`),
 				status: st,
 				version: version(),
+				lang: lang(),
 				upgrade: upgrade_state(),
 			};
+		}
+	},
+
+	set_lang: {
+		args: { lang: '' },
+		call: function(req) {
+			let l = req.args?.lang;
+			if (l != 'en' && l != 'ru') return { ok: false, errors: 'lang: en or ru' };
+			mkdir('/etc/proxyrules', 0o700);
+			return { ok: !!writefile(LANG_FILE, l + '\n') };
 		}
 	},
 
@@ -160,14 +193,14 @@ const methods = {
 		call: function(req) {
 			let tag = req.args?.tag;
 			if (type(tag) != 'string' || !match(tag, /^v[0-9]+\.[0-9]+\.[0-9]+$/))
-				return { ok: false, errors: 'bad release tag' };
+				return { ok: false, errors: tr('bad release tag') };
 			let u = upgrade_state();
 			if (u && !u.done)
-				return { ok: false, errors: 'an update is already running' };
+				return { ok: false, errors: tr('an update is already running') };
 			// the installer comes from the same release: it knows which packages the new version needs
 			let d = sh(`curl -fsSL -m 15 -o ${UPGRADE_SH} https://github.com/${REPO}/releases/download/${tag}/install.sh && sh -n ${UPGRADE_SH}`);
 			if (d.rc != 0)
-				return { ok: false, errors: 'failed to download the installer: ' + d.out };
+				return { ok: false, errors: tr('failed to download the installer: %s', d.out) };
 			writefile(UPGRADE_LOG, '');
 			system(`setsid sh -c 'sh ${UPGRADE_SH} ${tag}; rc=$?; echo; echo rc=$rc' >${UPGRADE_LOG} 2>&1 </dev/null &`);
 			return { ok: true };

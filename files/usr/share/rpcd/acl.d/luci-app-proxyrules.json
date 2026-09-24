@@ -8,7 +8,7 @@
 		},
 		"write": {
 			"ubus": {
-				"proxyrules": [ "save", "service", "upgrade" ]
+				"proxyrules": [ "save", "service", "upgrade", "set_lang" ]
 			}
 		}
 	}

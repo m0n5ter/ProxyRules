@@ -1,5 +1,7 @@
 # ProxyRules
 
+**English** | [Русский](README.ru.md)
+
 Traffic routing on an OpenWrt router through [sing-box](https://sing-box.sagernet.org/), driven by a single rules file: which domains, addresses and devices go through which connection (VLESS/REALITY or an interface such as AmneziaWG/WireGuard), with automatic failover to a live connection and a LuCI page to manage it all.
 
 ```
@@ -38,6 +40,7 @@ Everything not matched by a rule goes direct, so only the traffic you name is pr
 - **Only matching traffic touches sing-box**; everything else goes direct at full speed.
 - **Checked before applied** — the config is validated (including `sing-box check`) before it is saved; errors point at the line.
 - **One-line install, updates from LuCI, one-line removal.**
+- **English and Russian** interface.
 
 ## Requirements
 
@@ -57,17 +60,24 @@ wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install
 
 The installer:
 
-1. installs the missing packages (runs `opkg update` / `apk update` only if something is missing);
-2. downloads the latest release and puts the files in place;
-3. if there is no `/etc/proxyrules.conf` yet, copies the example there;
-4. adds **Services → Proxy Rules** to LuCI.
+1. asks for the interface language (English or Russian) — only on the first install;
+2. installs the missing packages (runs `opkg update` / `apk update` only if something is missing);
+3. downloads the latest release and puts the files in place;
+4. if there is no `/etc/proxyrules.conf` yet, copies the example there (with comments in the chosen language);
+5. adds **Services → Proxy Rules** to LuCI.
 
 Nothing is started yet: the service starts only when you press **Start**.
+
+To choose the language without the question, add `--lang en` or `--lang ru`:
+
+```sh
+wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install.sh | sh -s -- --lang ru
+```
 
 To install a specific version, pass its tag:
 
 ```sh
-wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install.sh | sh -s v1.0.3
+wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install.sh | sh -s v1.1.0
 ```
 
 ## First setup
@@ -88,14 +98,16 @@ wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install
 | **Rules** | The rules in order. Drag to reorder, group rules under headings, edit conditions and targets inline. |
 | **Connections** | Add, rename (references are renamed too) and edit connections. Secrets in links are not shown in the list. |
 | **Chains** | Named chains and their order. |
-| **Settings** | The `@` settings. |
+| **Settings** | The `@` settings and the interface language. |
 | **Config file** | The raw file, for editing by hand. |
+
+The interface language can be changed at any time on the **Settings** tab (**Interface language**); it also sets the language of error messages. It is stored in `/etc/proxyrules/lang`.
 
 **Check** validates the file without saving it. **Save & Apply** validates, saves and restarts the service if it is running. **Revert** discards unsaved changes.
 
 ## Configuration file
 
-`/etc/proxyrules.conf`. The full annotated example is [files/etc/proxyrules.conf.example](files/etc/proxyrules.conf.example) (it is also installed as `/etc/proxyrules.conf.example`).
+`/etc/proxyrules.conf`. The full annotated example is [files/etc/proxyrules.conf.example](files/etc/proxyrules.conf.example) (it is also installed as `/etc/proxyrules.conf.example`; the Russian one is [proxyrules.conf.example.ru](files/etc/proxyrules.conf.example.ru)).
 
 A comment is `#` at the start of a line or after a space. Names may contain Latin letters, digits and `-`; `direct` and `block` are reserved.
 
@@ -174,7 +186,7 @@ Files on the router:
 | Path | Contents |
 | --- | --- |
 | `/etc/proxyrules.conf` | your rules |
-| `/etc/proxyrules/` | downloaded lists and the saved dnsmasq settings |
+| `/etc/proxyrules/` | downloaded lists, the saved dnsmasq settings and the interface language |
 | `/var/run/proxyrules/` | the generated sing-box config, nftables rules and status (recreated on start) |
 | `/usr/share/proxyrules/` | the generator, watchdog, installer and version |
 

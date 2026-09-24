@@ -14,6 +14,7 @@ VERSION=${VERSION#v}
 FILES=(
 	etc/init.d/proxyrules
 	etc/proxyrules.conf.example
+	etc/proxyrules.conf.example.ru
 	usr/share/proxyrules/gen.uc
 	usr/share/proxyrules/watchdog.uc
 	usr/share/rpcd/ucode/proxyrules.uc
