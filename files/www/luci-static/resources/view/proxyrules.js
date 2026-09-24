@@ -501,11 +501,25 @@ return view.extend({
 	},
 
 	edit(it) {
-		if (it == this.editing || !this.closeEditor(true)) return;
+		if (it == this.editing) return;
+		const top = this.rowTop(it);
+		if (!this.closeEditor(true)) return;
 		this.editing = it;
 		this.renderAll();
+		// Закрытый выше редактор и фокус сдвигают страницу — редактор должен встать на место строки
+		this.keepAt(it, top);
 		const f = this.editorNode && this.editorNode.querySelector('input, textarea, select');
-		if (f) f.focus();
+		if (f) f.focus({ preventScroll: true });
+	},
+
+	rowTop(it) {
+		const el = this.rowEls && this.rowEls.get(it);
+		return el && el.isConnected ? el.getBoundingClientRect().top : null;
+	},
+
+	keepAt(it, top) {
+		const now = this.rowTop(it);
+		if (top != null && now != null) window.scrollBy(0, now - top);
 	},
 
 	closeEditor(save) {
@@ -516,10 +530,11 @@ return view.extend({
 	},
 
 	finishEdit(save) {
-		const it = this.editing;
+		const it = this.editing, top = this.rowTop(it);
 		if (!this.closeEditor(save)) return;
 		if (save && this.items.includes(it)) this.flash = it;
 		this.renderAll();
+		this.keepAt(it, top);
 	},
 
 	editorButtons(err) {
@@ -640,15 +655,18 @@ return view.extend({
 		const rows = [
 			E('div', { class: 'pr-row pr-head' }, [ E('span'), E('span', 'Condition'), E('span', 'Target'), E('span', 'Comment'), E('span') ]),
 		];
+		this.rowEls = new Map();
 		for (let i = this.ruleRegionStart(); i < this.items.length; i++) {
 			const it = this.items[i];
 			if (it.kind == 'blank') continue;
 			if (it == this.editing) {
 				rows.push(this.editorNode = this.editorNode || (it.kind == 'note' ? this.noteEditor(it) : it.kind == 'rule' ? this.ruleEditor(it) : this.rawEditor(it)));
+				this.rowEls.set(it, this.editorNode);
 				continue;
 			}
 			if (q && !this.matches(it, q)) continue;
 			rows.push(it.kind == 'note' ? this.noteRow(it) : this.ruleRow(it));
+			this.rowEls.set(it, rows[rows.length - 1]);
 		}
 		if (rows.length == 1)
 			rows.push(E('div', { class: 'pr-empty' }, q ? 'Nothing matches the filter.' : 'No rules yet — add one above.'));
