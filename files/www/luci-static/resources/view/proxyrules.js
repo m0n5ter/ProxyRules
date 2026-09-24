@@ -258,7 +258,10 @@ const CSS = `
 .pr-edit { padding:.7em .8em; margin:.4em 0; border:1px solid rgba(58,123,213,.55); border-radius:4px; background:rgba(58,123,213,.05) }
 .pr-edit .pr-line { display:flex; flex-wrap:wrap; gap:.4em; align-items:center; margin:.35em 0 }
 .pr-edit .pr-label { min-width:6em; opacity:.75 }
-.pr-edit .pr-grow { flex:1 1 18em; min-width:10em }
+/* тема LuCI задаёт полям фиксированную ширину: здесь списки — по содержимому
+   (в «Go via» помещается самая длинная цепочка), поле значений — всё остальное место */
+.pr-edit select { width:auto !important; min-width:0 !important; max-width:100%; flex:0 0 auto }
+.pr-edit .pr-grow { flex:1 1 18em; min-width:10em; width:auto !important; max-width:none !important }
 .pr-edit .pr-err { color:#d33 }
 .pr-chip { display:inline-flex; align-items:center; gap:.2em; padding:.1em .2em .1em .5em; margin:.15em; border-radius:3px; background:rgba(58,123,213,.18) }
 .pr-chip .btn { padding:0 .35em !important; min-width:0; line-height:1.5 }
