@@ -271,7 +271,11 @@ const CSS = `
 .pr-edit .pr-grow { flex:1 1 18em; min-width:10em; width:auto !important; max-width:none !important }
 .pr-edit .pr-err { color:#d33 }
 .pr-ms { position:relative }
-.pr-edit .pr-ms-btn { width:100% !important; max-width:none !important; min-height:2em; text-align:left; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+/* кнопка выбора списков — как текстовое поле темы (у bootstrap: 30px, padding 4px, рамка 1px, 13px) */
+.pr-edit .pr-ms-btn { display:block; width:100% !important; max-width:none !important; height:30px; margin:0; padding:4px;
+	font:inherit; font-size:13px; line-height:18px; color:var(--text-color-high, inherit); background:var(--background-color-high, Canvas);
+	border:1px solid var(--border-color-high, rgba(128,128,128,.6)); border-radius:3px;
+	text-align:left; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .pr-ms-empty { opacity:.6 }
 .pr-ms-panel { display:none; position:absolute; z-index:100; left:0; right:0; top:100%; margin-top:2px; max-height:20em; overflow:auto;
 	padding:.4em .6em; grid-template-columns:repeat(auto-fill, minmax(10em, 1fr)); gap:.1em 1em;
