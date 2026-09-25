@@ -97,6 +97,7 @@ wget -qO- https://github.com/m0n5ter/ProxyRules/releases/latest/download/install
 | Tab | What it does |
 | --- | --- |
 | **Status** | Version and update check, service state with Start / Stop / Restart, each connection's state and latency, which member of each chain is active, list update status. |
+| **Diagnostics** | Where traffic to a site goes: what sing-box's DNS answers, whether nftables hands it to sing-box, which rule catches it, which chain and connection it goes through right now — for any device. Below that, the connections open at the moment with their real path. |
 | **Rules** | The rules in order. Drag to reorder, group rules under headings, edit conditions and targets inline. |
 | **Connections** | Add, rename (references are renamed too) and edit connections. Secrets in links are not shown in the list. |
 | **Chains** | Named chains and their order. |
@@ -227,6 +228,7 @@ Packages installed for proxyrules (`sing-box` and others) are left in place; rem
 - **The service does not start:** the reason is shown on the Status tab; it is also in `/var/run/proxyrules/error`.
 - **A connection is always down:** open the link in a desktop client to make sure the server works; check the time on the router (`date`) — REALITY fails when the clock is off.
 - **A site still opens directly:** the device may be using its own DNS (DoH in the browser, or a hard-coded DNS server) and so never gets a fake IP. Turn off "secure DNS" in the browser, or add an `ip:`/`src:` rule.
+- **A site goes the wrong way:** the **Diagnostics** tab shows the rule that catches it and the path. Over SSH: `ucode /usr/share/proxyrules/diag.uc /var/run/proxyrules example.com [device IP]`.
 - **Status as JSON:** `ubus call proxyrules status`.
 
 ## Development

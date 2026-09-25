@@ -17,6 +17,7 @@ FILES=(
 	etc/proxyrules.conf.example.ru
 	usr/share/proxyrules/gen.uc
 	usr/share/proxyrules/watchdog.uc
+	usr/share/proxyrules/diag.uc
 	usr/share/rpcd/ucode/proxyrules.uc
 	usr/share/rpcd/acl.d/luci-app-proxyrules.json
 	usr/share/luci/menu.d/luci-app-proxyrules.json

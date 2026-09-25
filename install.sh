@@ -90,7 +90,7 @@ if [ -n "$UNINSTALL" ]; then
 		/usr/share/luci/menu.d/luci-app-proxyrules.json /www/luci-static/resources/view/proxyrules.js \
 		/tmp/proxyrules-upgrade.log /tmp/proxyrules-install.sh
 	# only our own files: anything else in /usr/share/proxyrules (backups etc.) stays
-	rm -f /usr/share/proxyrules/gen.uc /usr/share/proxyrules/watchdog.uc \
+	rm -f /usr/share/proxyrules/gen.uc /usr/share/proxyrules/watchdog.uc /usr/share/proxyrules/diag.uc \
 		/usr/share/proxyrules/version /usr/share/proxyrules/install.sh
 	rmdir /usr/share/proxyrules 2>/dev/null
 	rm -rf /var/run/proxyrules /www/luci-static/resources/view/proxyrules \

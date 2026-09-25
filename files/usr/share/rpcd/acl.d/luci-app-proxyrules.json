@@ -3,7 +3,7 @@
 		"description": "Proxy Rules: routing rules via sing-box",
 		"read": {
 			"ubus": {
-				"proxyrules": [ "get", "check", "status", "update" ]
+				"proxyrules": [ "get", "check", "status", "update", "diag" ]
 			}
 		},
 		"write": {

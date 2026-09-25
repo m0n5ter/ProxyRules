@@ -24,6 +24,10 @@ const RU = {
 	'bad release tag': 'неверный тег релиза',
 	'an update is already running': 'обновление уже идёт',
 	'failed to download the installer: %s': 'не удалось скачать установщик: %s',
+	'enter a domain, a link or an IPv4 address': 'введите домен, ссылку или IPv4-адрес',
+	'device: an IPv4 address': 'устройство: IPv4-адрес',
+	'port: 1-65535': 'порт: 1-65535',
+	'diagnostics failed: %s': 'диагностика не удалась: %s',
 };
 
 function lang() {
@@ -110,6 +114,19 @@ function upgrade_state() {
 	return { log: trim(replace(log, /\nrc=[0-9]+\n*$/, '')), done: !!m, ok: m ? m[1] == '0' : null };
 }
 
+// "https://www.Example.com:8443/path" -> "www.example.com"
+function diag_host(s) {
+	s = lc(trim(s ?? ''));
+	s = replace(s, /^[a-z][a-z0-9+.-]*:\/\//, '');
+	s = replace(s, /[\/?#].*$/, '');
+	s = replace(s, /:[0-9]*$/, '');
+	s = replace(s, /^\*?\./, '');
+	s = replace(s, /\.$/, '');
+	return s;
+}
+
+const IPV4 = /^([0-9]{1,3}\.){3}[0-9]{1,3}$/;
+
 const methods = {
 	get: {
 		call: function() {
@@ -168,6 +185,30 @@ const methods = {
 				lang: lang(),
 				upgrade: upgrade_state(),
 			};
+		}
+	},
+
+	// Which way traffic to a site goes: diag.uc in a separate process (the lists are big)
+	diag: {
+		args: { host: '', src: '', port: 0, network: '' },
+		call: function(req) {
+			let host = diag_host(req.args?.host);
+			let src = trim(req.args?.src ?? '');
+			let port = int(req.args?.port ?? 443) || 443;
+			let net = req.args?.network == 'udp' ? 'udp' : 'tcp';
+			if (host != '' && (length(host) > 253 || !match(host, /^[a-z0-9_]([a-z0-9_.-]*[a-z0-9])?$/)))
+				return { ok: false, errors: tr('enter a domain, a link or an IPv4 address') };
+			if (src != '' && !match(src, IPV4))
+				return { ok: false, errors: tr('device: an IPv4 address') };
+			if (port < 1 || port > 65535)
+				return { ok: false, errors: tr('port: 1-65535') };
+			let r = sh(`ucode ${LIB}/diag.uc ${RUN} ${host || '-'} ${src || '-'} ${port} ${net}`);
+			let res = null;
+			try { res = json(r.out); } catch (e) { }
+			if (r.rc != 0 || type(res) != 'object')
+				return { ok: false, errors: tr('diagnostics failed: %s', r.out) };
+			res.ok = true;
+			return res;
 		}
 	},
 

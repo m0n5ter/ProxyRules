@@ -13,6 +13,7 @@ const callStatus = rpc.declare({ object: 'proxyrules', method: 'status' });
 const callUpdate = rpc.declare({ object: 'proxyrules', method: 'update' });
 const callUpgrade = rpc.declare({ object: 'proxyrules', method: 'upgrade', params: [ 'tag' ] });
 const callSetLang = rpc.declare({ object: 'proxyrules', method: 'set_lang', params: [ 'lang' ] });
+const callDiag = rpc.declare({ object: 'proxyrules', method: 'diag', params: [ 'host', 'src', 'port', 'network' ] });
 
 // Interface language (/etc/proxyrules/lang), taken from the status on load
 let LANG = 'en';
@@ -191,6 +192,45 @@ const RU = {
 	"Failed": "Не получилось",
 	"Interface language": "Язык интерфейса",
 	"The language of this page and of error messages.": "Язык этой страницы и сообщений об ошибках.",
+	"Diagnostics": "Диагностика",
+	"Site": "Сайт",
+	"Device": "Устройство",
+	"Port": "Порт",
+	"any device": "любое устройство",
+	"Show the path": "Показать путь",
+	"Where traffic to a site goes: the rule that catches it, the chain and the connection it goes through right now, and the connections open at the moment. The running config is used — unsaved changes are not taken into account.": "Куда идёт трафик к сайту: какое правило его ловит, через какую цепочку и соединение он идёт сейчас, и какие соединения открыты в эту минуту. Используется работающая конфигурация — несохранённые изменения не учитываются.",
+	"The service is stopped — all traffic goes directly.": "Сервис остановлен — весь трафик идёт напрямую.",
+	"The service was started by an older version — restart it on the Status tab to see the path.": "Сервис запущен старой версией — перезапустите его на вкладке «Статус», чтобы увидеть путь.",
+	"Directly, past the proxy": "Напрямую, мимо прокси",
+	"all connections of the chain are down, sing-box is looking for a live one itself": "все соединения цепочки лежат, sing-box сам ищет живое",
+	"DNS": "DNS",
+	"fake-ip %s — the domain is in the rules, the traffic goes to sing-box": "fake-ip %s — домен есть в правилах, трафик идёт в sing-box",
+	"real address %s": "настоящий адрес %s",
+	" (and %s more)": " (и ещё %s)",
+	" — the domain is not in domain:/list: rules": " — домена нет в правилах domain:/list:",
+	"could not resolve": "не удалось узнать адрес",
+	"Interception": "Перехват",
+	"a local address — not intercepted": "локальный адрес — не перехватывается",
+	"nftables sends it to sing-box by the rule on line %s": "nftables отправляет в sing-box по правилу в строке %s",
+	"nftables lets it go directly by the direct rule on line %s — sing-box doesn't see it": "nftables пропускает напрямую по правилу direct в строке %s — sing-box его не видит",
+	"the address is in list %s — nftables sends it to sing-box": "адрес есть в списке %s — nftables отправляет в sing-box",
+	"no rule catches this address — it goes directly, sing-box doesn't see it": "этот адрес не ловит ни одно правило — идёт напрямую, sing-box его не видит",
+	"Rule": "Правило",
+	"line %s": "строка %s",
+	"no rule matched — direct (the default)": "ни одно правило не подошло — direct (по умолчанию)",
+	"Goes via": "Идёт через",
+	"Assumed: %s, protocol %s; %s.": "Предполагается: %s, протокол %s; %s.",
+	"not recognized": "не определён",
+	"device %s": "устройство %s",
+	"no device given — src: rules don't match": "устройство не задано — правила src: не срабатывают",
+	"Open connections (%s)": "Открытые соединения (%s)",
+	"showing the newest %s": "показаны последние %s",
+	"No open connections right now. Open the site on the device and press the button again.": "Сейчас открытых соединений нет. Откройте сайт на устройстве и нажмите кнопку ещё раз.",
+	"Destination": "Куда",
+	"Path": "Путь",
+	"Traffic": "Трафик",
+	"Age": "Возраст",
+	"sing-box is not responding": "sing-box не отвечает",
 };
 
 // "line N: …" from gen.uc stays English in the protocol; shown translated
@@ -205,6 +245,15 @@ function ago(ts) {
 	if (s < 5400) return tr('%s min', Math.round(s / 60));
 	if (s < 129600) return tr('%s h', Math.round(s / 3600));
 	return tr('%s d', Math.round(s / 86400));
+}
+
+function bytes(n) {
+	n = +n || 0;
+	if (n < 1024) return n + ' B';
+	const u = [ 'KB', 'MB', 'GB', 'TB' ];
+	let i = -1;
+	do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+	return n.toFixed(n < 10 ? 1 : 0) + ' ' + u[i];
 }
 
 const LISTS = [ 'anime', 'block', 'cloudflare', 'cloudfront', 'digitalocean', 'discord', 'geoblock',
@@ -481,6 +530,15 @@ const CSS = `
 .pr-chip .btn { padding:0 .35em !important; min-width:0; line-height:1.5 }
 .pr-dirty { color:#e67e22; font-weight:bold; line-height:1 }
 .pr-empty { padding:1em; opacity:.6 }
+.pr-diag-form label { display:flex; align-items:center; gap:.4em; margin:0 }
+.pr-diag-form label > span { opacity:.75 }
+.pr-diag-form .pr-diag-host { flex:1 1 20em }
+.pr-diag-form input, .pr-diag-form select { width:auto !important; min-width:0 !important }
+.pr-diag-form .pr-grow { flex:1; min-width:10em }
+.pr-diag-steps { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:.5em 1.2em; margin:1em 0 .6em; padding:.8em 1em;
+	border:1px solid rgba(128,128,128,.3); border-radius:4px }
+.pr-diag-k { opacity:.65 }
+.pr-diag-rule { overflow-wrap:anywhere }
 @media (max-width: 800px) {
 	/* narrow: everything in one column under the handle, the buttons in a row under the rule */
 	.pr-rules { grid-template-columns:auto minmax(0,1fr) }
@@ -631,7 +689,7 @@ return view.extend({
 		// The last tab opens (not the text one: edits in it don't survive a reload)
 		let tab = null;
 		try { tab = localStorage.getItem('proxyrules.tab'); } catch (e) { }
-		this.tab = [ 'status', 'rules', 'conns', 'chains', 'settings' ].includes(tab) ? tab : 'rules';
+		this.tab = [ 'status', 'diag', 'rules', 'conns', 'chains', 'settings' ].includes(tab) ? tab : 'rules';
 		this.errors = new Map();     // item -> messages of the last check
 		this.editing = null;         // the item open in the editor
 		this.editorNode = null;
@@ -641,6 +699,14 @@ return view.extend({
 		this.update = null;
 		this.statusNode = E('div', {}, this.renderStatus(st));
 		poll.add(() => this.refreshStatus(), 5);
+
+		// Diagnostics: the fields outlive tab switches
+		this.diagHost = E('input', { class: 'cbi-input-text pr-grow', type: 'text', placeholder: 'youtube.com, https://…, 1.2.3.4' });
+		this.diagSrc = E('input', { class: 'cbi-input-text', type: 'text', placeholder: tr('any device'), list: 'pr-devices', style: 'width:12em' });
+		this.diagPort = E('input', { class: 'cbi-input-text', type: 'number', min: 1, max: 65535, value: 443, style: 'width:6em' });
+		this.diagNet = E('select', { class: 'cbi-input-select' }, [ E('option', { value: 'tcp' }, 'tcp'), E('option', { value: 'udp' }, 'udp') ]);
+		this.devices = E('datalist', { id: 'pr-devices' });
+		this.diagResult = E('div');
 
 		this.textarea = E('textarea', {
 			class: 'cbi-input-textarea',
@@ -726,6 +792,7 @@ return view.extend({
 		const count = (k) => this.items.filter((it) => it.kind == k).length;
 		const tabs = [
 			[ 'status', tr('Status'), {} ],
+			[ 'diag', tr('Diagnostics'), {} ],
 			[ 'rules', tr('Rules (%s)', count('rule')), { rule: true, raw: true, note: true } ],
 			[ 'conns', tr('Connections (%s)', count('conn')), { conn: true } ],
 			[ 'chains', tr('Chains (%s)', count('chain')), { chain: true } ],
@@ -745,6 +812,7 @@ return view.extend({
 			this.renderRuleList();
 		}
 		else if (this.tab == 'status') dom.content(this.body, [ this.statusNode ]);
+		else if (this.tab == 'diag') dom.content(this.body, this.renderDiagTab());
 		else if (this.tab == 'conns') dom.content(this.body, this.renderConnsTab());
 		else if (this.tab == 'chains') dom.content(this.body, this.renderChainsTab());
 		else if (this.tab == 'settings') dom.content(this.body, this.renderSettingsTab());
@@ -752,9 +820,10 @@ return view.extend({
 			E('p', { class: 'cbi-section-descr' }, tr('File /etc/proxyrules.conf as is. The syntax is described at its top. Ctrl+S — check without saving.')),
 			this.textarea,
 		]);
-		// Check and save are about the file — the status tab doesn't have them
-		this.actionsNode.classList.toggle('pr-hidden', this.tab == 'status');
-		this.result.classList.toggle('pr-hidden', this.tab == 'status');
+		// Check and save are about the file — the status and diagnostics tabs don't have them
+		const nofile = this.tab == 'status' || this.tab == 'diag';
+		this.actionsNode.classList.toggle('pr-hidden', nofile);
+		this.result.classList.toggle('pr-hidden', nofile);
 		this.updateDirty();
 	},
 
@@ -1658,6 +1727,153 @@ return view.extend({
 					]),
 				])),
 		];
+	},
+
+	// ─────────────────────────────────────────── diagnostics
+
+	renderDiagTab() {
+		// the device list (DHCP) is loaded when the tab is first opened
+		if (!this.devicesLoaded) {
+			this.devicesLoaded = true;
+			callDiag('', '', 0, '').then((r) => this.setDevices(r && r.devices));
+		}
+		const enter = (ev) => { if (ev.key == 'Enter') { ev.preventDefault(); this.handleDiag(); } };
+		return [
+			E('p', { class: 'cbi-section-descr' }, tr('Where traffic to a site goes: the rule that catches it, the chain and the connection it goes through right now, and the connections open at the moment. The running config is used — unsaved changes are not taken into account.')),
+			E('div', { class: 'pr-toolbar pr-diag-form', keydown: enter }, [
+				E('label', { class: 'pr-diag-host' }, [ E('span', tr('Site')), this.diagHost ]),
+				E('label', {}, [ E('span', tr('Device')), this.diagSrc ]),
+				E('label', {}, [ E('span', tr('Port')), this.diagPort, this.diagNet ]),
+				E('button', { class: 'btn cbi-button cbi-button-action', click: ui.createHandlerFn(this, 'handleDiag') }, tr('Show the path')),
+				this.devices,
+			]),
+			this.diagResult,
+		];
+	},
+
+	setDevices(list) {
+		this.deviceNames = {};
+		dom.content(this.devices, (list || []).map((d) => {
+			if (d.name) this.deviceNames[d.ip] = d.name;
+			return E('option', { value: d.ip }, [ d.name || d.ip ]);
+		}));
+	},
+
+	deviceLabel(ip) {
+		const n = this.deviceNames && this.deviceNames[ip];
+		return n ? `${n} (${ip})` : ip;
+	},
+
+	handleDiag() {
+		return callDiag(this.diagHost.value.trim(), this.diagSrc.value.trim(), +this.diagPort.value || 443, this.diagNet.value).then((r) => {
+			if (r && r.devices) this.setDevices(r.devices);
+			dom.content(this.diagResult, r && r.ok
+				? this.renderDiag(r)
+				: E('pre', { class: 'alert-message error', style: 'white-space:pre-wrap' }, [ (r && r.errors) || tr('Unknown error') ]));
+		});
+	},
+
+	// A connection, a chain, direct or block — as on the Rules tab, plus the current state
+	renderPath(p) {
+		const direct = [ T('span', { class: 'pr-target' }, 'direct'), ' ', tr('Directly, past the proxy') ];
+		if (p.kind == 'direct') return direct;
+		if (p.kind == 'block') return [ T('span', { class: 'pr-target pr-t-block' }, 'block'), ' ', tr('Blocked') ];
+		const conn = (c) => !c ? '' : c.kind == 'direct' ? direct : [
+			T('span', { class: 'pr-target pr-t-conn' }, c.name), ' ',
+			c.where ? T('span', { class: 'pr-mono' }, c.kind == 'iface' ? tr('interface %s', c.where) : c.where) : '', ' ',
+			nodeState(c), c.delay != null ? ' ' + tr('%s ms', c.delay) : '',
+		];
+		if (p.kind != 'chain') return conn(p.via);
+
+		// an inline chain has a key like "TR_DE_UK" — shown as its members
+		const parts = [ T('span', { class: 'pr-target pr-t-chain' }, p.chain.includes('_') ? tr('Inline chain') : p.chain), ' ' ];
+		p.members.forEach((m, i) => {
+			if (i) parts.push(' → ');
+			parts.push(m == p.active ? E('strong', { style: 'color:#2a2' }, [ m ]) : E('span', { style: 'opacity:.55' }, [ m ]));
+		});
+		if (p.via) parts.push(E('div', { style: 'margin-top:.3em' }, conn(p.via)));
+		else if (p.active && /~auto$/.test(p.active))
+			parts.push(E('div', { style: 'color:#d33;margin-top:.3em' }, tr('all connections of the chain are down, sing-box is looking for a live one itself')));
+		return parts;
+	},
+
+	renderDiagSteps(r) {
+		const steps = [], q = r.query;
+		const step = (title, body) => steps.push(E('div', { class: 'pr-diag-k' }, [ title ]), E('div', {}, body));
+
+		const d = r.dns;
+		if (d && !d.addrs.length)
+			step(tr('DNS'), E('span', { style: 'color:#d33', title: d.error || '' }, [ tr('could not resolve') ]));
+		else if (d && d.fake)
+			step(tr('DNS'), tr('fake-ip %s — the domain is in the rules, the traffic goes to sing-box', d.addrs[0]));
+		else if (d)
+			step(tr('DNS'), tr('real address %s', d.addrs[0]) + (d.addrs.length > 1 ? tr(' (and %s more)', d.addrs.length - 1) : '') +
+				tr(' — the domain is not in domain:/list: rules'));
+
+		// by fake-ip — already said in the DNS line
+		const ic = r.intercept;
+		if (ic && ic.by != 'fakeip') {
+			let text;
+			if (ic.by == 'local') text = tr('a local address — not intercepted');
+			else if (ic.by == 'rule' && ic.to) text = tr('nftables sends it to sing-box by the rule on line %s', ic.ln);
+			else if (ic.by == 'rule') text = tr('nftables lets it go directly by the direct rule on line %s — sing-box doesn\'t see it', ic.ln);
+			else if (ic.by == 'list') text = tr('the address is in list %s — nftables sends it to sing-box', ic.list);
+			else text = tr('no rule catches this address — it goes directly, sing-box doesn\'t see it');
+			step(tr('Interception'), text);
+		}
+
+		if (ic && ic.to)
+			step(tr('Rule'), r.rule
+				? [ E('span', { style: 'opacity:.6' }, tr('line %s', r.rule.ln)), ' ', T('span', { class: 'pr-mono' }, r.rule.text) ]
+				: tr('no rule matched — direct (the default)'));
+		if (r.path) step(tr('Goes via'), this.renderPath(r.path));
+
+		const out = [ E('div', { class: 'pr-diag-steps' }, steps) ];
+		if (ic && ic.to)
+			out.push(E('p', { style: 'opacity:.6;font-size:90%' }, [ tr('Assumed: %s, protocol %s; %s.',
+				`${q.network}/${q.port}`, q.protocol || tr('not recognized'),
+				q.src ? tr('device %s', this.deviceLabel(q.src)) : tr('no device given — src: rules don\'t match')) ]));
+		return out;
+	},
+
+	renderConnections(r) {
+		const out = [ E('p', { style: 'margin-top:1em' }, [
+			E('strong', tr('Open connections (%s)', r.total)),
+			r.total > r.connections.length ? E('span', { style: 'opacity:.6' }, [ ' — ' + tr('showing the newest %s', r.connections.length) ]) : '',
+		]) ];
+		if (!r.connections.length) {
+			out.push(E('p', { style: 'opacity:.6' }, tr('No open connections right now. Open the site on the device and press the button again.')));
+			return out;
+		}
+		out.push(E('table', { class: 'table' }, [
+			E('tr', { class: 'tr table-titles' }, [ 'Device', 'Destination', 'Path', 'Rule', 'Traffic', 'Age' ].map((h) => E('th', { class: 'th' }, tr(h)))),
+			...r.connections.map((c) => {
+				// Clash API: [outbound, …, group] — shown from the group to the outbound, without the internal ~auto
+				const chain = (c.chains || []).slice().reverse().filter((x) => !/~auto$/.test(x));
+				const rule = (c.rule || '').replace(' => ', ' → ');
+				return E('tr', { class: 'tr' }, [
+					T('td', { class: 'td' }, this.deviceLabel(c.src)),
+					E('td', { class: 'td pr-mono' }, [ `${c.host || c.ip}:${c.port}`, E('span', { style: 'opacity:.5' }, [ ' ' + c.network ]) ]),
+					E('td', { class: 'td' }, chain.length ? [ E('strong', [ chain.join(' → ') ]) ] : '—'),
+					T('td', { class: 'td pr-mono pr-diag-rule', title: rule }, rule.length > 70 ? rule.slice(0, 70) + '…' : rule),
+					E('td', { class: 'td', style: 'white-space:nowrap' }, [ `↑ ${bytes(c.up)} ↓ ${bytes(c.down)}` ]),
+					E('td', { class: 'td', style: 'white-space:nowrap' }, [ ago(Math.floor(Date.parse(c.start) / 1000)) ]),
+				]);
+			}),
+		]));
+		return out;
+	},
+
+	renderDiag(r) {
+		const out = [];
+		if (r.query.host) {
+			if (r.stopped) out.push(E('p', { class: 'alert-message warning' }, tr('The service is stopped — all traffic goes directly.')));
+			else if (r.outdated) out.push(E('p', { class: 'alert-message warning' }, tr('The service was started by an older version — restart it on the Status tab to see the path.')));
+			else out.push(...this.renderDiagSteps(r));
+		}
+		if (r.running && r.api === false) out.push(E('p', { class: 'alert-message warning' }, tr('sing-box is not responding')));
+		else if (r.connections) out.push(...this.renderConnections(r));
+		return out;
 	},
 
 	// ─────────────────────────────────────────── check and save

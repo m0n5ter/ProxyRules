@@ -472,7 +472,7 @@ for (let r in rules) {
 	if (last && simple(last) && simple(r) && last.conds[0].type == r.conds[0].type && last.target == r.target)
 		last.conds[0].values = [ ...last.conds[0].values, ...r.conds[0].values ];
 	else
-		push(merged, { target: r.target, conds: map(r.conds, (c) => ({ type: c.type, neg: c.neg, values: [ ...c.values ] })) });
+		push(merged, { ln: r.ln, target: r.target, conds: map(r.conds, (c) => ({ type: c.type, neg: c.neg, values: [ ...c.values ] })) });
 }
 
 let route_rules = [
@@ -485,6 +485,9 @@ for (let r in merged) push(route_rules, route_rule(r));
 // ---------------------------------------------------------------- interception
 // Traffic has to reach sing-box, otherwise the rule won't fire. A rule with target
 // direct needs no interception (direct is the default behavior anyway).
+// Fake-ip addresses always go to sing-box, before everything else: the answer was
+// given to everyone, and it's sing-box that decides by the rules (a src: -> direct
+// rule included) — the address itself leads nowhere.
 // For the rest, interception by one positive condition is enough — the conditions
 // are joined by AND, so matching traffic is sure to be caught by it:
 //   domain, list -> fake-ip in DNS (watchdog puts the lists' subnets into nft);
@@ -514,7 +517,7 @@ for (let r in merged) {
 		if (exact) {
 			let by = {};
 			for (let c in r.conds) by[c.type] = c.values;
-			push(nft_matches, { src: by.src, dst: by.ip, ports: by.port, direct: true });
+			push(nft_matches, { ln: r.ln, src: by.src, dst: by.ip, ports: by.port, direct: true });
 		}
 		continue;
 	}
@@ -528,7 +531,7 @@ for (let r in merged) {
 		if (by.list) seen_list = true;
 	}
 	else
-		push(nft_matches, { src: by.src, dst: by.ip, ports: by.port });
+		push(nft_matches, { ln: r.ln, src: by.src, dst: by.ip, ports: by.port });
 }
 
 let dns_rules = [
@@ -619,16 +622,16 @@ ${sets}
 		iifname != @pr_ifaces return
 		ip daddr @pr_local return
 		ct status dnat return
-${pre_rules}		ip daddr ${C.FAKEIP_RANGE} ${L4} meta mark set ${MARK} return
-		jump pr_lists
+		ip daddr ${C.FAKEIP_RANGE} ${L4} meta mark set ${MARK} return
+${pre_rules}		jump pr_lists
 	}
 
 	chain pr_output {
 		type route hook output priority mangle; policy accept;
 		ip daddr @pr_local return
 		meta mark & ${OUT_MARK} == ${OUT_MARK} return
-${out_rules}		ip daddr ${C.FAKEIP_RANGE} ${L4} meta mark set ${MARK} return
-		jump pr_lists
+		ip daddr ${C.FAKEIP_RANGE} ${L4} meta mark set ${MARK} return
+${out_rules}		jump pr_lists
 	}
 
 	chain pr_tproxy {
@@ -658,6 +661,12 @@ let state = {
 	nft_table: C.NFT_TABLE,
 	nft_lists_chain: 'pr_lists',
 	mixed: `127.0.0.1:${C.MIXED_PORT}`,
+	// for diag.uc: the rules in the file's order and how nftables sends traffic to sing-box
+	rules: map(rules, (r) => ({ ln: r.ln, target: r.target, conds: r.conds })),
+	intercept: nft_matches,
+	fakeip: C.FAKEIP_RANGE,
+	local: C.LOCALV4,
+	ifaces,
 };
 
 let env = `MARK=${MARK}
