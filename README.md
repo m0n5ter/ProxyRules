@@ -46,7 +46,9 @@ Everything not matched by a rule goes direct, so only the traffic you name is pr
 
 - OpenWrt **24.10 or newer** (opkg or apk), with LuCI.
 - Enough flash for `sing-box`: the binary is about 40 MB (it takes less on a compressed overlay). Check free space with `df -h /overlay`.
+- Enough RAM: sing-box with the lists loaded takes about 70 MB. 256 MB or more is recommended; on 128 MB routers it will be tight.
 - At least one proxy server: a VLESS link (e.g. from 3x-ui / x-ui / Xray) or a VPN interface already set up in OpenWrt.
+- For VLESS REALITY, the server must run Xray-core **older than 26.9.8**. Newer versions reject REALITY connections from sing-box 1.12 (`reality verification failed`, see [SagerNet/sing-box#4520](https://github.com/SagerNet/sing-box/issues/4520)). 3x-ui ships a newer core, so replace `/usr/local/x-ui/bin/xray-linux-amd64` with an older release (e.g. v25.9.11) and restart x-ui — again after every `x-ui update`.
 
 The installer adds the missing packages itself: `sing-box`, `ucode`, `ucode-mod-fs`, `rpcd-mod-ucode`, `jq`, `curl`, `ip-full`, `kmod-nft-tproxy`.
 

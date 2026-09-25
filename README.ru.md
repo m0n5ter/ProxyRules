@@ -46,7 +46,9 @@ src:192.168.1.50                   -> AUTO
 
 - OpenWrt **24.10 или новее** (opkg или apk), с LuCI.
 - Место во флеше под `sing-box`: сам файл около 40 МБ (на сжатом overlay занимает меньше). Свободное место — `df -h /overlay`.
+- Оперативная память: sing-box с загруженными списками занимает около 70 МБ. Рекомендуется 256 МБ и больше; на роутерах со 128 МБ будет впритык.
 - Хотя бы один прокси-сервер: VLESS-ссылка (например, из 3x-ui / x-ui / Xray) или VPN-интерфейс, уже настроенный в OpenWrt.
+- Для VLESS REALITY на сервере нужен Xray-core **старее 26.9.8**. Новые версии отклоняют REALITY-подключения от sing-box 1.12 (`reality verification failed`, см. [SagerNet/sing-box#4520](https://github.com/SagerNet/sing-box/issues/4520)). 3x-ui ставит более новое ядро, поэтому замените `/usr/local/x-ui/bin/xray-linux-amd64` на старый релиз (например, v25.9.11) и перезапустите x-ui — и так после каждого `x-ui update`.
 
 Недостающие пакеты установщик ставит сам: `sing-box`, `ucode`, `ucode-mod-fs`, `rpcd-mod-ucode`, `jq`, `curl`, `ip-full`, `kmod-nft-tproxy`.
 
